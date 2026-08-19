@@ -119,7 +119,19 @@ function toast(message, { error = false, action = null, duration = 3500 } = {}) 
 /** エラーを日本語化してトーストで出す */
 async function toastError(err) {
   const { message, kind } = await DB.describeDbError(err);
-  toast(message, { error: true, duration: kind === "paused" ? 9000 : 5000 });
+  toast(message, { error: true, duration: kind === "auth" || kind === "paused" ? 9000 : 5000 });
+
+  // セッション切れの状態で操作を続けても必ず同じ失敗を繰り返す。
+  // 壊れたセッションを捨ててログイン画面へ戻し、やり直せるようにする。
+  if (kind === "auth") {
+    try {
+      await Auth.signOut();
+    } catch {
+      /* 既に無効なセッションなら signOut 自体が失敗することがある。無視してよい */
+    }
+    toLoggedOut();
+    initAuthScreenOnce();
+  }
   return kind;
 }
 

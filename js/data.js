@@ -51,8 +51,24 @@ export async function describeDbError(error) {
     return { message: RPC_MESSAGES[msg], kind };
   }
 
-  // RLS 違反（他人の行を書き換えようとした等）
+  // 42501 = 権限なし。ただし原因は2種類あり、利用者に見せるべき文言が違う。
+  //
+  //   (a) 本当に他人の行を触ろうとした → 「許可されていません」
+  //   (b) セッションが切れている       → 「ログインし直して」
+  //
+  // (b) が紛らわしいのは、supabase-js がセッションを持たないとき
+  // publishable キーをそのまま Bearer トークンとして送るため。
+  // サーバ側では未ログイン(anon)として扱われ、RLS 以前にテーブル/関数の
+  // 権限が無く 42501 が返る。この2つを取り違えると原因究明が長引くので、
+  // セッションの有無を実際に見て切り分ける。
   if (code === "42501" || msg.includes("row-level security")) {
+    const { data } = await supabase.auth.getSession();
+    if (!data?.session) {
+      return {
+        message: "ログインの有効期限が切れています。もう一度ログインしてください。",
+        kind: "auth",
+      };
+    }
     return {
       message: "この操作は許可されていません。自分が登録した項目だけ編集・削除できます。",
       kind: "denied",
