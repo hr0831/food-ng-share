@@ -1,7 +1,7 @@
 @charset "UTF-8";
 
 /* =====================================================================
-   NGフード共有 / スタイル
+   ふたりごはん / スタイル
    スマホファースト（基準幅 375px）。影は使わず、細い境界線で構造を作る。
    ===================================================================== */
 
@@ -237,7 +237,20 @@ summary:focus-visible {
 .btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn--danger  { background: var(--danger); border-color: var(--danger); color: #fff; }
 .btn--block   { width: 100%; }
+/* ツールバー内に置く小さめのボタン。44pxのタップ領域は保つ */
+.btn--sm { font-size: .8125rem; padding: 8px 12px; flex: 0 0 auto; }
 .btn[disabled] { opacity: .45; cursor: default; }
+
+/* 絞り込みと「お店に伝える」を1行にまとめる帯 */
+.toolbar {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+/* 375px で1行に収まるよう、ラベルは少し小さめにする */
+.toolbar .switch { flex: 1 1 auto; min-width: 0; font-size: .8125rem; gap: 8px; }
 
 .iconbtn {
   flex: 0 0 auto;

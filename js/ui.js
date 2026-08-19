@@ -560,7 +560,34 @@ function renderSummary() {
       ? "レベル3の登録はありません。"
       : "2人ともまだ登録がありません。",
   });
+}
+
+/**
+ * 共有用テキストのダイアログ。
+ *
+ * 以前はまとめ画面に常置していたが、縦を大きく占有して一覧の邪魔になるため
+ * ボタン→ダイアログに移した。コピー／共有を押したら一度閉じるのは、
+ * モーダルは最前面に出るため、閉じないと完了トーストが背後に隠れてしまうから。
+ */
+async function openShareDialog() {
+  const items = summaryItems();
   $("#share-text").textContent = buildShareText(items);
+  $("#share-scope").textContent = state.filterLv3
+    ? "「レベル3（食べられない）だけ」で絞り込んだ内容です。"
+    : "登録されているものを、すべて載せています。";
+
+  const result = await openDialog($("#dlg-share"), [
+    { el: $("#share-close"), value: "cancel" },
+    { el: $("#btn-copy-share"), value: "copy" },
+    { el: $("#btn-share-text"), value: "share" },
+  ]);
+
+  const text = $("#share-text").textContent;
+  if (result === "copy") {
+    await copyText(text, "共有用テキストをコピーしました");
+  } else if (result === "share") {
+    await shareOrCopy({ title: "ふたりごはん", text }, text, "共有用テキストをコピーしました");
+  }
 }
 
 /**
@@ -1171,7 +1198,7 @@ function wireEvents() {
   $("#btn-share").addEventListener("click", () =>
     shareOrCopy(
       {
-        title: "NGフード共有への招待",
+        title: "ふたりごはん への招待",
         text: `「食べられないもの」を共有しましょう。招待コード: ${state.room.invite_code}`,
         url: inviteUrl(),
       },
@@ -1215,16 +1242,7 @@ function wireEvents() {
     state.filterLv3 = e.target.checked;
     renderSummary();
   });
-  $("#btn-copy-share").addEventListener("click", () =>
-    copyText($("#share-text").textContent, "共有用テキストをコピーしました")
-  );
-  $("#btn-share-text").addEventListener("click", () =>
-    shareOrCopy(
-      { title: "NG食材メモ", text: $("#share-text").textContent },
-      $("#share-text").textContent,
-      "共有用テキストをコピーしました"
-    )
-  );
+  $("#btn-open-share").addEventListener("click", openShareDialog);
 
   // --- ルーム画面 ---
   $("#btn-create-room").addEventListener("click", handleCreateRoom);

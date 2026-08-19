@@ -7,8 +7,8 @@
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#F1F8F6" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0F1614" media="(prefers-color-scheme: dark)">
-<meta name="description" content="友人と「食べられないもの」を共有するアプリ">
-<title>NGフード共有</title>
+<meta name="description" content="ふたりで「食べられないもの」を共有するアプリ">
+<title>ふたりごはん</title>
 <!-- ファビコンもロゴと同じ線画（絵文字を使わない） -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232E9E8B' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M2.6 12.2h18.8a9.4 9.4 0 0 1-18.8 0Z'/><path d='M12.4 9.9c-.6-3.1 1.2-6 4.4-7 .8 3.2-1.1 6.2-4.4 7Z'/></svg>">
 <link rel="stylesheet" href="./style.css">
@@ -17,7 +17,7 @@
 
 <header class="appbar">
   <span class="appbar__logo" data-icon="logo" data-icon-size="22"></span>
-  <h1 class="appbar__title">NGフード共有</h1>
+  <h1 class="appbar__title">ふたりごはん</h1>
   <span class="conn" id="conn" data-state="connecting" role="status">接続中</span>
   <button type="button" class="iconbtn" id="btn-settings" aria-label="設定" hidden>
     <span data-icon="settings" data-icon-size="20"></span>
@@ -211,26 +211,21 @@
 
     <!-- ---- タブ3: まとめ ---- -->
     <div class="tabpanel" data-tab="summary" hidden>
-      <div class="card card--tight">
+      <!--
+        絞り込みと「お店に伝える」を1枚のツールバーにまとめ、
+        リスト本体が縦を目一杯使えるようにしている。
+        共有用テキストは場所を取るのでダイアログへ追い出した。
+      -->
+      <div class="card card--tight toolbar">
         <label class="switch">
           <input type="checkbox" id="filter-lv3">
-          <span>レベル3（食べられない）だけ表示</span>
+          <span>レベル3だけ表示</span>
         </label>
+        <button type="button" class="btn btn--primary btn--sm" id="btn-open-share">
+          <span data-icon="share" data-icon-size="17"></span>お店に伝える
+        </button>
       </div>
       <div id="summary-list"></div>
-      <div class="card">
-        <h2>共有用テキスト</h2>
-        <p class="note">お店やグループLINEにそのまま貼れる短い文章です。</p>
-        <pre class="sharetext" id="share-text"></pre>
-        <div class="btnrow">
-          <button type="button" class="btn btn--primary" id="btn-copy-share">
-            <span data-icon="copy" data-icon-size="18"></span>コピー
-          </button>
-          <button type="button" class="btn" id="btn-share-text">
-            <span data-icon="share" data-icon-size="18"></span>共有
-          </button>
-        </div>
-      </div>
     </div>
 
   </section>
@@ -298,6 +293,26 @@
       <button type="submit" value="save" class="btn btn--primary" id="edit-save">保存</button>
     </div>
     <button type="button" class="linkbtn linkbtn--danger" id="edit-delete">この項目を削除</button>
+  </form>
+</dialog>
+
+<!-- ============ 共有用テキスト ============ -->
+<dialog id="dlg-share" class="dlg">
+  <form method="dialog">
+    <h2>お店に伝える</h2>
+    <p class="note" id="share-scope"></p>
+    <pre class="sharetext" id="share-text"></pre>
+    <div class="btnrow">
+      <button type="button" class="btn btn--primary" id="btn-copy-share">
+        <span data-icon="copy" data-icon-size="18"></span>コピー
+      </button>
+      <button type="button" class="btn" id="btn-share-text">
+        <span data-icon="share" data-icon-size="18"></span>共有
+      </button>
+    </div>
+    <div class="dlg__actions">
+      <button type="button" value="cancel" class="btn" id="share-close">閉じる</button>
+    </div>
   </form>
 </dialog>
 
