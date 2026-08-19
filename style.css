@@ -6,18 +6,17 @@
    ===================================================================== */
 
 :root {
-  --bg:          #FBF9F4;  /* 温かみのあるオフホワイト */
+  --bg:          #F1F8F6;  /* ほのかなミント白 */
   --surface:     #FFFFFF;
-  --border:      #E8E4DA;
-  --text:        #1F1D1A;
-  --text-muted:  #6E6A62;
-  --accent:      #C96F4A;  /* テラコッタ。主要ボタン・選択状態 */
-  --accent-soft: #F7E8E0;
-  --danger:      #B3382C;  /* アレルギー・絶対NG */
-  --danger-soft: #FAE6E3;
-  --belief:      #7A6A4F;  /* 宗教・信条 */
-  --dislike:     #8A8578;  /* 苦手・好み */
-  --online:      #5C8A5E;  /* プレゼンス表示 */
+  --border:      #D9E8E3;
+  --text:        #16211E;
+  --text-muted:  #62726E;
+  --accent:      #2E9E8B;  /* ミントグリーン。主要ボタン・選択状態 */
+  --accent-soft: #DCF0EB;
+  --danger:      #C0392B;  /* アレルギー・レベル3 */
+  --danger-soft: #FBE9E7;
+  --dislike:     #6E8A84;  /* 苦手・好み */
+  --online:      #2FA36F;  /* プレゼンス表示 */
 
   --r-chip: 999px;
   --r-card: 12px;
@@ -31,18 +30,17 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg:          #14120E;
-    --surface:     #1E1B16;
-    --border:      #343027;
-    --text:        #F2EEE6;
-    --text-muted:  #A39C8E;
-    --accent:      #E08A63;
-    --accent-soft: #3B2A21;
+    --bg:          #0F1614;
+    --surface:     #16211E;
+    --border:      #27332F;
+    --text:        #E9F2EF;
+    --text-muted:  #93A5A0;
+    --accent:      #4CC6AF;
+    --accent-soft: #17332D;
     --danger:      #F08A7E;
-    --danger-soft: #3D201C;
-    --belief:      #C6B189;
-    --dislike:     #ABA595;
-    --online:      #82B586;
+    --danger-soft: #3A1F1C;
+    --dislike:     #9AB0AA;
+    --online:      #57C99A;
   }
 }
 
@@ -56,7 +54,6 @@ html, body {
   font-family: var(--font);
   font-size: 16px;
   line-height: 1.6;
-  /* iOS でスクロールが footer 下に潜り込まないように */
   -webkit-text-size-adjust: 100%;
 }
 
@@ -76,6 +73,9 @@ code {
   border-radius: 4px;
   padding: 1px 5px;
 }
+
+/* アイコン共通。色は currentColor に従うので、文脈ごとの色指定が効く */
+.ico { display: block; flex: 0 0 auto; }
 
 /* ---------------------------------------------------------------- *
    レイアウト
@@ -101,6 +101,7 @@ main,
   border-bottom: 1px solid var(--border);
   width: 100%;
 }
+.appbar__logo { color: var(--accent); display: flex; flex: 0 0 auto; }
 .appbar__title {
   font-size: .9375rem;
   font-weight: 700;
@@ -185,6 +186,15 @@ main {
   color: var(--text-muted);
   padding: 0;
 }
+/* 未選択の必須項目であることを示す小さな注記 */
+.field__req {
+  font-weight: 700;
+  color: var(--accent);
+  margin-left: 4px;
+}
+.field__req::before { content: "※"; }
+.seg--filled .field__req { display: none; }
+
 input[type="text"],
 input[type="email"] {
   /* 16px 未満だと iOS がフォーカス時に自動ズームするため 16px 固定 */
@@ -208,6 +218,10 @@ summary:focus-visible {
 /* --- ボタン ----------------------------------------------------- */
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   font-family: inherit;
   font-size: .9375rem;
   font-weight: 700;
@@ -223,13 +237,13 @@ summary:focus-visible {
 .btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn--danger  { background: var(--danger); border-color: var(--danger); color: #fff; }
 .btn--block   { width: 100%; }
-.btn[disabled] { opacity: .5; cursor: default; }
+.btn[disabled] { opacity: .45; cursor: default; }
 
 .iconbtn {
   flex: 0 0 auto;
   width: 44px; height: 44px;
   display: grid; place-items: center;
-  font-size: 1.125rem;
+  color: var(--text-muted);
   background: none;
   border: 1px solid transparent;
   border-radius: var(--r-btn);
@@ -255,7 +269,7 @@ summary:focus-visible {
 .btnrow > .btn { flex: 1 1 140px; }
 .btnrow--sub { justify-content: space-between; gap: 4px; }
 
-/* --- セグメント（区分・レベルの3択） ---------------------------- */
+/* --- セグメント（選択肢） ---------------------------------------- */
 
 .seg { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .seg legend { padding: 0; }
@@ -264,6 +278,8 @@ summary:focus-visible {
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;
 }
+.seg__row--2 { grid-template-columns: repeat(2, 1fr); }
+
 .seg__opt { position: relative; }
 .seg__opt input {
   position: absolute; inset: 0;
@@ -271,10 +287,11 @@ summary:focus-visible {
   width: 100%; height: 100%;
   cursor: pointer;
 }
-.seg__opt span {
+.seg__opt > span {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 5px;
   text-align: center;
   min-height: 44px;
   padding: 6px 4px;
@@ -291,13 +308,18 @@ summary:focus-visible {
   background: var(--accent);
   border-color: var(--accent);
 }
-/* アレルギーだけは選択色を警告色にして、区分の違いを色でも伝える */
+/* アレルギーとレベル3は、選んだときも警告色にして重さを色で伝える */
 .seg__opt input[value="allergy"]:checked + span,
-.seg__opt input[value="never"]:checked + span {
+.seg__opt input[value="3"]:checked + span {
   background: var(--danger);
   border-color: var(--danger);
 }
 .seg__opt input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* レベルの選択肢は「数字＋短い説明」の縦積み */
+.seg__lv { flex-direction: column; gap: 1px; }
+.seg__lv b { font-size: 1rem; line-height: 1.1; }
+.seg__lv small { font-size: .625rem; font-weight: 700; opacity: .9; }
 
 /* --- スイッチ（チェックボックス） -------------------------------- */
 
@@ -311,31 +333,6 @@ summary:focus-visible {
   cursor: pointer;
 }
 .switch input { width: 22px; height: 22px; accent-color: var(--danger); flex: 0 0 auto; }
-
-/* --- チップ ----------------------------------------------------- */
-
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.chips__head {
-  color: var(--text-muted);
-  margin-top: 4px;
-}
-.chips__head--danger { color: var(--danger); }
-
-.chip {
-  font-family: inherit;
-  font-size: .875rem;
-  font-weight: 700;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-chip);
-  min-height: 44px;          /* タップ領域の下限 */
-  padding: 6px 16px;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-.chip--allergy { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); color: var(--danger); }
-.chip[disabled] { opacity: .4; }
 
 /* ---------------------------------------------------------------- *
    リスト（登録済み項目）
@@ -352,10 +349,9 @@ summary:focus-visible {
 .group__count { font-size: .75rem; color: var(--text-muted); }
 
 /* アレルギーのセクションは枠ごと警告色にして、苦手と一目で区別できるようにする */
-.group--allergy .group__title { color: var(--danger); }
+.group--allergy .group__head { color: var(--danger); }
 .group--allergy .items { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
-.group--belief  .group__title { color: var(--belief); }
-.group--dislike .group__title { color: var(--dislike); }
+.group--dislike .group__head { color: var(--dislike); }
 
 .items {
   background: var(--surface);
@@ -365,7 +361,35 @@ summary:focus-visible {
 }
 .group--allergy .items { background: var(--danger-soft); }
 
+/* --- スワイプ削除の土台 ------------------------------------------ */
+/*
+ * .row が窓、.row__bg が背面の赤い削除面、.item が手前でスライドする面。
+ * .item は不透明な背景（親から継承）を持たないと、下の赤が透けてしまう。
+ */
+.row {
+  position: relative;
+  overflow: hidden;
+  background: inherit;
+  border-top: 1px solid var(--border);
+}
+.row:first-child { border-top: 0; }
+
+.row__bg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-right: 18px;
+  background: var(--danger);
+  color: #fff;
+  font-size: .8125rem;
+  font-weight: 700;
+}
+
 .item {
+  position: relative;         /* 背面より手前に描く */
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -374,26 +398,39 @@ summary:focus-visible {
   font-family: inherit;
   font-size: 1rem;
   color: var(--text);
-  background: none;
+  background: inherit;
   border: 0;
-  border-top: 1px solid var(--border);
-  min-height: 52px;
+  min-height: 56px;
   padding: 12px 14px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  /* 横方向のジェスチャは自前で扱い、縦スクロールはブラウザに任せる */
+  touch-action: pan-y;
+  transition: transform .18s ease;
+  /* スワイプ中に文字が選択されてしまうのを防ぐ */
+  user-select: none;
+  -webkit-user-select: none;
 }
-.item:first-child { border-top: 0; }
-.item--readonly { cursor: default; }
+.row--dragging .item { transition: none; }
+.item--readonly { cursor: default; touch-action: auto; }
 .item--pending { opacity: .55; }
 
-.item__ic { flex: 0 0 auto; font-size: 1.0625rem; line-height: 1.5; }
+.item__ic { flex: 0 0 auto; margin-top: 2px; }
+.group--allergy .item__ic { color: var(--danger); }
+.group--dislike .item__ic { color: var(--dislike); }
+
 .item__body { flex: 1 1 auto; min-width: 0; }
 .item__food { font-weight: 700; word-break: break-word; }
-.item__meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; align-items: center; }
-.item__note { font-size: .8125rem; color: var(--text-muted); margin-top: 2px; word-break: break-word; }
-.item__edit { flex: 0 0 auto; font-size: .75rem; color: var(--text-muted); }
+.item__meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; align-items: center; }
+.item__note { font-size: .8125rem; color: var(--text-muted); margin-top: 3px; word-break: break-word; }
+.item__edit { flex: 0 0 auto; color: var(--text-muted); margin-top: 4px; }
+
+/* --- バッジ ------------------------------------------------------ */
 
 .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: .6875rem;
   font-weight: 700;
   line-height: 1;
@@ -403,25 +440,33 @@ summary:focus-visible {
   color: var(--text-muted);
   white-space: nowrap;
 }
-.badge--never   { background: var(--danger); border-color: var(--danger); color: #fff; }
-.badge--avoid   { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.badge b { font-size: .8125rem; line-height: 1; }
+
+/* レベル: 3 が最も重い */
+.badge--lv3 { background: var(--danger); border-color: var(--danger); color: #fff; }
+.badge--lv2 { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.badge--lv1 { color: var(--text-muted); }
+
+.badge--kind    { background: var(--danger); border-color: var(--danger); color: #fff; }
+.badge--cat     { background: transparent; }
 .badge--who     { background: var(--accent-soft); border-color: transparent; color: var(--text); }
-.badge--allergy { background: var(--danger); border-color: var(--danger); color: #fff; }
-.badge--belief  { color: var(--belief); border-color: color-mix(in srgb, var(--belief) 45%, var(--border)); }
-.badge--dislike { color: var(--dislike); }
 
 /* 空状態 */
 .empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
   background: var(--surface);
   border: 1px dashed var(--border);
   border-radius: var(--r-card);
-  padding: 24px 16px;
+  padding: 26px 16px;
   text-align: center;
   color: var(--text-muted);
   font-size: .875rem;
   line-height: 1.7;
 }
-.empty__ic { display: block; font-size: 1.75rem; margin-bottom: 6px; }
+.empty__ic { color: color-mix(in srgb, var(--text-muted) 55%, transparent); margin-bottom: 4px; }
 
 /* ---------------------------------------------------------------- *
    招待 / 共有テキスト
@@ -469,6 +514,9 @@ summary:focus-visible {
 }
 
 .disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
   max-width: 640px;
   margin: 0 auto;
   padding: 7px 16px;
@@ -478,6 +526,7 @@ summary:focus-visible {
   background: var(--danger-soft);
   border-bottom: 1px solid var(--border);
 }
+.disclaimer > span { margin-top: 1px; }
 
 .tabbar {
   display: grid;
@@ -497,10 +546,10 @@ summary:focus-visible {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   -webkit-tap-highlight-color: transparent;
 }
-.tabbar__ic { font-size: 1.25rem; line-height: 1.1; }
+.tabbar__ic { display: flex; }
 .tabbar button[aria-current="page"] {
   color: var(--accent);
   border-top-color: var(--accent);
@@ -534,7 +583,9 @@ summary:focus-visible {
   font-size: .875rem;
   line-height: 1.4;
 }
-.toast--error { background: var(--danger); color: #fff; }
+.toast--error  { background: var(--danger); color: #fff; }
+/* アレルギー項目を消したときの「元に戻す」は見逃されると影響が大きいので強調する */
+.toast--danger { background: var(--danger); color: #fff; }
 .toast__msg { flex: 1 1 auto; }
 .toast__action {
   flex: 0 0 auto;
@@ -561,7 +612,6 @@ summary:focus-visible {
   background: var(--surface);
   color: var(--text);
   padding: 0;
-  /* iOS Safari のダイアログは既定でセーフエリアを考慮しないので余白で逃がす */
   margin: auto;
 }
 .dlg::backdrop { background: rgba(0, 0, 0, .45); }
@@ -575,7 +625,7 @@ summary:focus-visible {
 }
 .dlg__actions { display: flex; gap: 8px; margin-top: 4px; }
 .dlg__actions .btn { flex: 1 1 0; }
-/* 確認文は改行を活かす（アレルギー削除の強い警告文が2段落になる） */
+/* 確認文は改行を活かす */
 #confirm-body { white-space: pre-line; font-size: .9375rem; line-height: 1.65; }
 #dlg-confirm h2 { font-size: 1rem; }
 
@@ -595,7 +645,7 @@ summary:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .sk { animation: none; }
-  * { transition: none !important; }
+  .item { transition: none !important; }
 }
 
 /* details（6桁コード欄）の見出し */

@@ -60,14 +60,71 @@ create table if not exists public.restrictions (
   room_id    uuid        not null references public.rooms(id) on delete cascade,
   user_id    uuid        not null references auth.users(id)   on delete cascade,
   food       text        not null,
-  -- allergy = アレルギー / belief = 宗教・信条 / dislike = 苦手・好み
-  kind       text        not null check (kind  in ('allergy', 'belief', 'dislike')),
-  -- never = 絶対NG / avoid = できれば避けたい / small_ok = 少量なら大丈夫
-  level      text        not null check (level in ('never', 'avoid', 'small_ok')),
+  -- allergy = アレルギー / dislike = 苦手・好み
+  kind       text        not null check (kind in ('allergy', 'dislike')),
+  -- 1 = 好んでは食べない / 2 = 食べられるが極力避けたい / 3 = 食べられない・苦手
+  -- 数字が大きいほど重い
+  level      smallint    not null check (level between 1 and 3),
+  -- ingredient = 食材（えび） / dish = 料理（エビチリ）
+  category   text        not null default 'ingredient'
+                         check (category in ('ingredient', 'dish')),
   note       text        not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- ---------------------------------------------------------------------
+-- 1-b. 既存環境の移行（v1 → v2）
+--
+--   create table if not exists は「既にある表」を書き換えないので、
+--   前のバージョンで作った restrictions は下の alter で作り替える。
+--   新規プロジェクトでは何も起きない（全部スキップされる）。
+--
+--   v1 → v2 の変更点:
+--     区分   : 'belief'（宗教・信条）を廃止し 'dislike' に寄せる
+--     レベル : 'never'/'avoid'/'small_ok' → 3/2/1 の数値へ
+--     分類   : category 列（食材／料理）を追加
+-- ---------------------------------------------------------------------
+do $$
+begin
+  -- 区分: belief を dislike に移してから制約を張り替える
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'restrictions' and column_name = 'kind'
+  ) then
+    alter table public.restrictions drop constraint if exists restrictions_kind_check;
+    update public.restrictions set kind = 'dislike' where kind not in ('allergy', 'dislike');
+    alter table public.restrictions
+      add constraint restrictions_kind_check check (kind in ('allergy', 'dislike'));
+  end if;
+
+  -- レベル: text のままなら数値へ変換する（never=3 / avoid=2 / small_ok=1）
+  if (
+    select data_type from information_schema.columns
+    where table_schema = 'public' and table_name = 'restrictions' and column_name = 'level'
+  ) = 'text' then
+    alter table public.restrictions drop constraint if exists restrictions_level_check;
+    alter table public.restrictions
+      alter column level type smallint
+      using (case level
+               when 'never'    then 3
+               when 'avoid'    then 2
+               when 'small_ok' then 1
+               else 2
+             end);
+  end if;
+  alter table public.restrictions drop constraint if exists restrictions_level_check;
+  alter table public.restrictions
+    add constraint restrictions_level_check check (level between 1 and 3);
+
+  -- 分類: 無ければ追加（既存行はすべて「食材」扱い）
+  alter table public.restrictions
+    add column if not exists category text not null default 'ingredient';
+  alter table public.restrictions drop constraint if exists restrictions_category_check;
+  alter table public.restrictions
+    add constraint restrictions_category_check check (category in ('ingredient', 'dish'));
+end;
+$$;
 
 -- 無料枠の自動停止対策（GitHub Actions から1日1回 GET するだけの的）
 create table if not exists public.heartbeat (
@@ -325,11 +382,27 @@ alter table public.room_members enable row level security;
 alter table public.restrictions enable row level security;
 alter table public.heartbeat    enable row level security;
 
--- 注: `force row level security`（所有者にも RLS を適用）は敢えて付けない。
--- 付けると SQL Editor / Table Editor（postgres ロールで接続）からも自分のデータが
--- 一切見えなくなり、マイグレーションや調査ができなくなる。
--- アプリは必ず anon / authenticated ロールで接続するため、防御としては
--- enable だけで足りる。
+-- 注: `force row level security`（所有者にも RLS を適用）は敢えて付けない。むしろ明示的に外す。
+--
+-- 理由が2つある:
+--   1. FORCE を付けると SQL Editor / Table Editor（postgres ロールで接続）からも
+--      自分のデータが一切見えなくなり、調査や修正ができなくなる。
+--   2. このスキーマは「rooms / room_members には INSERT ポリシーを1つも置かず、
+--      security definer 関数（= 所有者権限で動く）経由でのみ書き込む」設計になっている。
+--      FORCE が付くと所有者も RLS の対象になり、INSERT ポリシーが無い＝誰も書けない、
+--      となって create_room / join_room が
+--      「new row violates row-level security policy」で必ず失敗する。
+--
+-- プロジェクトによっては、DDL 実行時に自動で FORCE を付けるイベントトリガー
+--（rls_auto_enable など）が仕込まれていることがある。その場合でもこのスクリプトを
+-- 再実行すれば元に戻るよう、毎回明示的に no force を掛けておく。
+--
+-- アプリは必ず anon / authenticated ロールで接続するため、防御は enable だけで足りる。
+alter table public.profiles     no force row level security;
+alter table public.rooms        no force row level security;
+alter table public.room_members no force row level security;
+alter table public.restrictions no force row level security;
+alter table public.heartbeat    no force row level security;
 
 
 -- ---------------------------------------------------------------------

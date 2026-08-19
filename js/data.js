@@ -9,16 +9,26 @@ import { supabase, probeProject } from "./supabase.js";
  * 定数（UI と共有するラベル）
  * ------------------------------------------------------------------ */
 
+/** 区分。アレルギーと苦手の2軸だけにしている（宗教・信条は廃止） */
 export const KINDS = {
-  allergy: { label: "アレルギー", short: "アレルギー", icon: "⚠️", order: 0 },
-  belief: { label: "宗教・信条", short: "宗教・信条", icon: "🕊️", order: 1 },
-  dislike: { label: "苦手・好み", short: "苦手", icon: "🥄", order: 2 },
+  allergy: { label: "アレルギー", short: "アレルギー", icon: "allergy", order: 0 },
+  dislike: { label: "苦手・好み", short: "苦手", icon: "dislike", order: 1 },
 };
 
+/**
+ * レベル。数値が大きいほど重い。
+ * order は「重い順に並べる」ための順位なので、3 が先頭に来るよう逆順にしてある。
+ */
 export const LEVELS = {
-  never: { label: "絶対NG", order: 0 },
-  avoid: { label: "できれば避けたい", order: 1 },
-  small_ok: { label: "少量なら大丈夫", order: 2 },
+  3: { label: "食べられない・苦手", short: "食べられない", order: 0 },
+  2: { label: "食べられるが極力避けたい", short: "極力避けたい", order: 1 },
+  1: { label: "好んでは食べない", short: "好まない", order: 2 },
+};
+
+/** 分類。「えび」のような食材と「エビチリ」のような料理を区別する */
+export const CATEGORIES = {
+  ingredient: { label: "食材", icon: "ingredient" },
+  dish: { label: "料理", icon: "dish" },
 };
 
 /* ------------------------------------------------------------------ *
@@ -236,14 +246,15 @@ export async function listRestrictions(roomId) {
  * Realtime のエコーが HTTP レスポンスより先に届いても、
  * 「id でマージする」だけで重複表示が起きない（冪等になる）。
  */
-export async function addRestriction({ id, roomId, userId, food, kind, level, note }) {
+export async function addRestriction({ id, roomId, userId, food, kind, level, category, note }) {
   const row = {
     id: id || newId(),
     room_id: roomId,
     user_id: userId,
     food: String(food).trim().slice(0, 40),
     kind,
-    level,
+    level: Number(level),
+    category: category || "ingredient",
     note: String(note || "").trim().slice(0, 120),
   };
   return unwrap(await supabase.from("restrictions").insert(row).select().single());
@@ -253,7 +264,8 @@ export async function updateRestriction(id, patch) {
   const clean = {};
   if (patch.food !== undefined) clean.food = String(patch.food).trim().slice(0, 40);
   if (patch.kind !== undefined) clean.kind = patch.kind;
-  if (patch.level !== undefined) clean.level = patch.level;
+  if (patch.level !== undefined) clean.level = Number(patch.level);
+  if (patch.category !== undefined) clean.category = patch.category;
   if (patch.note !== undefined) clean.note = String(patch.note || "").trim().slice(0, 120);
   return unwrap(
     await supabase.from("restrictions").update(clean).eq("id", id).select().single()
@@ -266,11 +278,16 @@ export async function deleteRestriction(id) {
 
 /** 「元に戻す」用。削除前の行をそのまま（id ごと）復活させる。 */
 export async function restoreRestriction(row) {
-  const { id, room_id, user_id, food, kind, level, note, created_at } = row;
+  const { id, room_id, user_id, food, kind, level, category, note, created_at } = row;
   return unwrap(
     await supabase
       .from("restrictions")
-      .insert({ id, room_id, user_id, food, kind, level, note, created_at })
+      .insert({
+        id, room_id, user_id, food, kind,
+        level: Number(level),
+        category: category || "ingredient",
+        note, created_at,
+      })
       .select()
       .single()
   );

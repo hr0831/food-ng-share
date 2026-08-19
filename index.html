@@ -5,19 +5,23 @@
 <!-- viewport-fit=cover: iOS のセーフエリア（ホームバー）を env() で扱えるようにする -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#FBF9F4" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#17150F" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F1F8F6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1614" media="(prefers-color-scheme: dark)">
 <meta name="description" content="友人と「食べられないもの」を共有するアプリ">
 <title>NGフード共有</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍽</text></svg>">
+<!-- ファビコンもロゴと同じ線画（絵文字を使わない） -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232E9E8B' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M2.6 12.2h18.8a9.4 9.4 0 0 1-18.8 0Z'/><path d='M12.4 9.9c-.6-3.1 1.2-6 4.4-7 .8 3.2-1.1 6.2-4.4 7Z'/></svg>">
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
 
 <header class="appbar">
-  <h1 class="appbar__title">🍽 NGフード共有</h1>
+  <span class="appbar__logo" data-icon="logo" data-icon-size="22"></span>
+  <h1 class="appbar__title">NGフード共有</h1>
   <span class="conn" id="conn" data-state="connecting" role="status">接続中</span>
-  <button type="button" class="iconbtn" id="btn-settings" aria-label="設定" hidden>⚙️</button>
+  <button type="button" class="iconbtn" id="btn-settings" aria-label="設定" hidden>
+    <span data-icon="settings" data-icon-size="20"></span>
+  </button>
 </header>
 
 <p class="presence" id="presence" hidden></p>
@@ -142,19 +146,29 @@
         <h2>追加する</h2>
 
         <label class="field">
-          <span class="field__label">食べ物の名前</span>
-          <input type="text" id="add-food" maxlength="40" placeholder="例: えび"
+          <span class="field__label">名前</span>
+          <input type="text" id="add-food" maxlength="40" placeholder="例: えび／エビチリ"
                  autocomplete="off" enterkeyhint="done">
         </label>
 
         <fieldset class="seg">
-          <legend class="field__label">区分</legend>
-          <div class="seg__row" id="add-kind"></div>
+          <legend class="field__label">分類</legend>
+          <div class="seg__row seg__row--2" id="add-category"></div>
         </fieldset>
 
         <fieldset class="seg">
-          <legend class="field__label">レベル</legend>
+          <legend class="field__label">
+            区分 <span class="field__req">選んでください</span>
+          </legend>
+          <div class="seg__row seg__row--2" id="add-kind"></div>
+        </fieldset>
+
+        <fieldset class="seg">
+          <legend class="field__label">
+            レベル <span class="field__req">選んでください</span>
+          </legend>
           <div class="seg__row" id="add-level"></div>
+          <p class="note" id="add-level-help">1 好んでは食べない ／ 2 食べられるが極力避けたい ／ 3 食べられない・苦手</p>
         </fieldset>
 
         <label class="field">
@@ -162,17 +176,10 @@
           <input type="text" id="add-note" maxlength="120" placeholder="例: 加熱済みも不可" autocomplete="off">
         </label>
 
-        <button type="submit" class="btn btn--primary btn--block">リストに追加</button>
+        <button type="submit" class="btn btn--primary btn--block" id="btn-add" disabled>
+          リストに追加
+        </button>
       </form>
-
-      <div class="card">
-        <h2>クイック追加</h2>
-        <p class="note">タップするとすぐ登録されます。あとから編集できます。</p>
-        <h3 class="chips__head chips__head--danger">⚠️ アレルギー表示の対象になりやすいもの</h3>
-        <div class="chips" id="chips-allergy"></div>
-        <h3 class="chips__head">🥄 苦手として挙がりやすいもの</h3>
-        <div class="chips" id="chips-dislike"></div>
-      </div>
 
       <div id="mine-list"></div>
     </div>
@@ -185,8 +192,12 @@
           <p class="muted">まだ相手が参加していません。下のコードかリンクを相手に渡してください。</p>
           <div class="invite-code" id="invite-code">--------</div>
           <div class="btnrow">
-            <button type="button" class="btn btn--primary" id="btn-share">リンクを共有</button>
-            <button type="button" class="btn" id="btn-copy-code">コードをコピー</button>
+            <button type="button" class="btn btn--primary" id="btn-share">
+              <span data-icon="share" data-icon-size="18"></span>リンクを共有
+            </button>
+            <button type="button" class="btn" id="btn-copy-code">
+              <span data-icon="copy" data-icon-size="18"></span>コードをコピー
+            </button>
           </div>
           <p class="note" id="invite-status"></p>
           <div class="btnrow btnrow--sub">
@@ -202,8 +213,8 @@
     <div class="tabpanel" data-tab="summary" hidden>
       <div class="card card--tight">
         <label class="switch">
-          <input type="checkbox" id="filter-never">
-          <span>「絶対NG」だけ表示（お店に伝える用）</span>
+          <input type="checkbox" id="filter-lv3">
+          <span>レベル3（食べられない）だけ表示</span>
         </label>
       </div>
       <div id="summary-list"></div>
@@ -212,8 +223,12 @@
         <p class="note">お店やグループLINEにそのまま貼れる短い文章です。</p>
         <pre class="sharetext" id="share-text"></pre>
         <div class="btnrow">
-          <button type="button" class="btn btn--primary" id="btn-copy-share">コピー</button>
-          <button type="button" class="btn" id="btn-share-text">共有</button>
+          <button type="button" class="btn btn--primary" id="btn-copy-share">
+            <span data-icon="copy" data-icon-size="18"></span>コピー
+          </button>
+          <button type="button" class="btn" id="btn-share-text">
+            <span data-icon="share" data-icon-size="18"></span>共有
+          </button>
         </div>
       </div>
     </div>
@@ -224,12 +239,19 @@
 <!-- 常時表示の注記 + タブバー -->
 <div class="footerbar">
   <p class="disclaimer">
-    ⚠️ このアプリは参考情報です。アレルギーがある場合は、注文時に必ずお店へ直接お伝えください。
+    <span data-icon="allergy" data-icon-size="14"></span>
+    このアプリは参考情報です。アレルギーがある場合は、注文時に必ずお店へ直接お伝えください。
   </p>
   <nav class="tabbar" id="tabbar" hidden aria-label="画面切り替え">
-    <button type="button" data-tabbtn="mine"    aria-current="page"><span class="tabbar__ic">📝</span>マイリスト</button>
-    <button type="button" data-tabbtn="partner"><span class="tabbar__ic">👤</span>相手のリスト</button>
-    <button type="button" data-tabbtn="summary"><span class="tabbar__ic">📋</span>まとめ</button>
+    <button type="button" data-tabbtn="mine" aria-current="page">
+      <span class="tabbar__ic" data-icon="mine" data-icon-size="22"></span>マイリスト
+    </button>
+    <button type="button" data-tabbtn="partner">
+      <span class="tabbar__ic" data-icon="partner" data-icon-size="22"></span>相手のリスト
+    </button>
+    <button type="button" data-tabbtn="summary">
+      <span class="tabbar__ic" data-icon="summary" data-icon-size="22"></span>まとめ
+    </button>
   </nav>
 </div>
 
@@ -252,12 +274,16 @@
   <form method="dialog" id="form-edit">
     <h2>項目を編集</h2>
     <label class="field">
-      <span class="field__label">食べ物の名前</span>
+      <span class="field__label">名前</span>
       <input type="text" id="edit-food" maxlength="40" autocomplete="off">
     </label>
     <fieldset class="seg">
+      <legend class="field__label">分類</legend>
+      <div class="seg__row seg__row--2" id="edit-category"></div>
+    </fieldset>
+    <fieldset class="seg">
       <legend class="field__label">区分</legend>
-      <div class="seg__row" id="edit-kind"></div>
+      <div class="seg__row seg__row--2" id="edit-kind"></div>
     </fieldset>
     <fieldset class="seg">
       <legend class="field__label">レベル</legend>

@@ -6,6 +6,7 @@ import { IS_CONFIGURED } from "./supabase.js";
 import * as Auth from "./auth.js";
 import * as DB from "./data.js";
 import { subscribeRoom } from "./realtime.js";
+import { icon, mountIcons } from "./icons.js";
 
 /* ================================================================== *
  * 小さなヘルパー
@@ -46,7 +47,7 @@ const state = {
   profiles: new Map(),            // user_id -> profile
   restrictions: new Map(),        // id -> row（id をキーにするので冪等にマージできる）
   tab: "mine",
-  filterNever: false,
+  filterLv3: false,               // まとめ画面「レベル3だけ表示」
   presenceOthers: [],
   sync: null,                     // realtime のハンドル
 };
@@ -64,12 +65,21 @@ const partnerId = () => state.members.find((m) => m.user_id !== myId())?.user_id
  * 固定フッター（注記＋タブバー）の実高さを CSS 変数に反映する。
  * タブバーの表示/非表示や注記の折り返し行数で高さが変わるため、
  * 固定値にするとコンテンツの末尾がフッターに隠れてしまう。
- * ResizeObserver だけに頼らず、高さが変わり得る場面で明示的に呼ぶ。
  */
 function applyFooterHeight() {
   const footer = $(".footerbar");
   if (!footer) return;
-  document.documentElement.style.setProperty("--footer-h", `${footer.offsetHeight}px`);
+  const set = () => {
+    /*
+     * 極端な値はレイアウト途中の誤計測（画面回転直後など）。
+     * 実機で取り得ない範囲に丸めておかないと、画面下に巨大な空白ができる。
+     */
+    const h = Math.max(44, Math.min(240, footer.offsetHeight || 108));
+    document.documentElement.style.setProperty("--footer-h", `${h}px`);
+  };
+  set();
+  // レイアウトが落ち着いてからもう一度測る
+  requestAnimationFrame(set);
 }
 
 function showScreen(name) {
@@ -92,8 +102,9 @@ function showError(title, body) {
 /**
  * トースト。action を渡すと右側にボタンが出る（削除の「元に戻す」用）。
  */
-function toast(message, { error = false, action = null, duration = 3500 } = {}) {
-  const box = el("div", `toast${error ? " toast--error" : ""}`);
+function toast(message, { error = false, danger = false, action = null, duration = 3500 } = {}) {
+  const variant = error ? " toast--error" : danger ? " toast--danger" : "";
+  const box = el("div", `toast${variant}`);
   box.append(el("span", "toast__msg", message));
 
   let timer = null;
@@ -142,10 +153,6 @@ async function toastError(err) {
  * 一部で close イベントが飛ばないことがあり、そうなると Promise が永久に
  * 解決せずダイアログ操作が無反応になるため。ボタンの click を主、
  * close / cancel（Esc・バックドロップ）を従として二重に受ける。
- *
- * @param {HTMLDialogElement} dlg
- * @param {Array<{el: HTMLElement, value: string}>} buttons
- * @returns {Promise<string>} 押されたボタンの value（Esc 等なら "cancel"）
  */
 function openDialog(dlg, buttons) {
   return new Promise((resolve) => {
@@ -198,21 +205,29 @@ async function confirmDialog({ title, body, okLabel = "削除する", danger = t
 }
 
 /* ================================================================== *
- * セグメント（3択）とクイック追加チップ
+ * セグメント（選択肢）
  * ================================================================== */
 
 const KIND_OPTIONS = [
-  ["allergy", "⚠️ アレルギー"],
-  ["belief", "🕊️ 宗教・信条"],
-  ["dislike", "🥄 苦手・好み"],
+  ["allergy", "アレルギー"],
+  ["dislike", "苦手・好み"],
 ];
+const CATEGORY_OPTIONS = [
+  ["ingredient", "食材"],
+  ["dish", "料理"],
+];
+/** レベルは「数字＋短い説明」の縦積みで見せる（横幅375pxに収めるため短縮形） */
 const LEVEL_OPTIONS = [
-  ["never", "絶対NG"],
-  ["avoid", "できれば避けたい"],
-  ["small_ok", "少量なら大丈夫"],
+  ["1", "好まない"],
+  ["2", "極力避けたい"],
+  ["3", "食べられない"],
 ];
 
-function buildSeg(container, groupName, options, checked) {
+/**
+ * ラジオボタンのセグメントを組み立てる。
+ * checked に null を渡すと「未選択」で始まる（区分・レベルは必須なのでこれを使う）。
+ */
+function buildSeg(container, groupName, options, checked, { stacked = false, withIcon = null } = {}) {
   container.textContent = "";
   for (const [value, label] of options) {
     const wrap = el("label", "seg__opt");
@@ -220,36 +235,26 @@ function buildSeg(container, groupName, options, checked) {
     input.type = "radio";
     input.name = groupName;
     input.value = value;
-    input.checked = value === checked;
-    wrap.append(input, el("span", null, label));
+    input.checked = checked != null && String(value) === String(checked);
+
+    const face = el("span", stacked ? "seg__lv" : null);
+    if (stacked) {
+      face.append(el("b", null, value), el("small", null, label));
+    } else {
+      if (withIcon) face.append(icon(withIcon(value), { size: 16 }));
+      face.append(el("span", null, label));
+    }
+    wrap.append(input, face);
     container.append(wrap);
   }
+  markSegFilled(container);
 }
+
 const segValue = (container) => $("input:checked", container)?.value || null;
 
-// アレルギー表示の対象になりやすいもの（既定: アレルギー / 絶対NG）
-const CHIPS_ALLERGY = [
-  "えび", "かに", "くるみ", "そば", "卵", "乳",
-  "落花生", "小麦", "さば", "いか", "大豆", "キウイ",
-];
-// 苦手として挙がりやすいもの（既定: 苦手 / できれば避けたい）
-const CHIPS_DISLIKE = [
-  "パクチー", "セロリ", "なす", "ピーマン", "しいたけ", "ホルモン", "レバー",
-  "生魚", "貝類", "羊肉", "わさび", "激辛", "パイナップル", "トマト",
-];
-
-function buildChips() {
-  const make = (container, foods, kind, level, extraClass) => {
-    container.textContent = "";
-    for (const food of foods) {
-      const b = el("button", `chip${extraClass}`, food);
-      b.type = "button";
-      b.addEventListener("click", () => addItem({ food, kind, level }));
-      container.append(b);
-    }
-  };
-  make($("#chips-allergy"), CHIPS_ALLERGY, "allergy", "never", " chip--allergy");
-  make($("#chips-dislike"), CHIPS_DISLIKE, "dislike", "avoid", "");
+/** 選択済みなら「※選んでください」を隠す */
+function markSegFilled(container) {
+  container.closest(".seg")?.classList.toggle("seg--filled", Boolean(segValue(container)));
 }
 
 /* ================================================================== *
@@ -267,6 +272,7 @@ function mergeRow(row) {
   state.restrictions.set(row.id, row);
 }
 
+/** 区分（アレルギー→苦手）、レベル（3→2→1）、登録順 で並べる */
 function sortedItems(list) {
   return list.slice().sort((a, b) => {
     const k = DB.KINDS[a.kind].order - DB.KINDS[b.kind].order;
@@ -309,31 +315,137 @@ function renderPresence() {
   box.hidden = false;
 }
 
-/** 1項目を表す行。editable なら押すと編集ダイアログが開く。 */
-function renderItem(row, { editable, showWho = false }) {
+/** 1項目のカード本体 */
+function renderItem(row, { showWho = false, editable = false }) {
   const node = el("button", `item${editable ? "" : " item--readonly"}${row._pending ? " item--pending" : ""}`);
   node.type = "button";
   if (!editable) node.disabled = true;
 
-  node.append(el("span", "item__ic", DB.KINDS[row.kind].icon));
+  const ic = el("span", "item__ic");
+  ic.append(icon(DB.KINDS[row.kind].icon, { size: 19 }));
+  node.append(ic);
 
   const body = el("div", "item__body");
   body.append(el("div", "item__food", row.food));
 
   const meta = el("div", "item__meta");
-  // level: never は必ず「絶対NG」の明示ラベルを警告色で出す
-  const levelClass = row.level === "never" ? "badge badge--never" : `badge badge--${row.level}`;
-  meta.append(el("span", levelClass, DB.LEVELS[row.level].label));
-  if (row.kind === "allergy") meta.append(el("span", "badge badge--allergy", "アレルギー"));
+
+  // レベル: 数字を主、短い説明を従にする
+  const lv = el("span", `badge badge--lv${row.level}`);
+  lv.append(el("b", null, String(row.level)), el("span", null, DB.LEVELS[row.level].short));
+  meta.append(lv);
+
+  // 分類（食材／料理）はバッジで添えるだけ
+  const cat = DB.CATEGORIES[row.category] || DB.CATEGORIES.ingredient;
+  const catBadge = el("span", "badge badge--cat");
+  catBadge.append(icon(cat.icon, { size: 13 }), el("span", null, cat.label));
+  meta.append(catBadge);
+
   if (showWho) meta.append(el("span", "badge badge--who", nameOf(row.user_id)));
   body.append(meta);
 
   if (row.note) body.append(el("div", "item__note", row.note));
   node.append(body);
 
-  if (editable) node.append(el("span", "item__edit", "編集 ›"));
-  if (editable) node.addEventListener("click", () => openEdit(row));
+  if (editable) {
+    const chev = el("span", "item__edit");
+    chev.append(icon("chevron", { size: 18 }));
+    node.append(chev);
+    node.addEventListener("click", () => openEdit(row));
+  }
   return node;
+}
+
+/**
+ * 1行（スワイプ削除の受け皿つき）。
+ * 自分の登録だけスワイプ・編集ができる。相手の行は読み取り専用。
+ */
+function renderRow(row, opts) {
+  const mine = row.user_id === myId() && !row._pending;
+  const wrap = el("div", "row");
+
+  if (mine) {
+    const bg = el("div", "row__bg");
+    bg.append(icon("trash", { size: 18 }), el("span", null, "削除"));
+    wrap.append(bg);
+  }
+
+  const item = renderItem(row, { ...opts, editable: mine });
+  wrap.append(item);
+  if (mine) attachSwipe(wrap, item, () => removeItem(row));
+  return wrap;
+}
+
+/**
+ * 左スワイプで削除。
+ *
+ * 縦スクロールを邪魔しないよう、最初の数pxで縦横どちらの操作かを判定し、
+ * 横と判定したときだけ指を追わせる（CSS の touch-action: pan-y と対で機能する）。
+ */
+function attachSwipe(rowEl, itemEl, onDelete) {
+  let startX = 0, startY = 0, dx = 0, axis = null, active = false;
+
+  const reset = () => {
+    active = false;
+    axis = null;
+    rowEl.classList.remove("row--dragging");
+  };
+
+  itemEl.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    startX = e.clientX;
+    startY = e.clientY;
+    dx = 0;
+    axis = null;
+    active = true;
+  });
+
+  itemEl.addEventListener("pointermove", (e) => {
+    if (!active) return;
+    const mx = e.clientX - startX;
+    const my = e.clientY - startY;
+
+    if (!axis) {
+      if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+      // 縦寄りならスクロール操作とみなして手を引く
+      if (Math.abs(mx) <= Math.abs(my) * 1.3) { active = false; return; }
+      axis = "x";
+      rowEl.classList.add("row--dragging");
+      try { itemEl.setPointerCapture(e.pointerId); } catch { /* 一部環境で未対応 */ }
+    }
+    dx = Math.min(0, mx);                       // 左方向だけ受け付ける
+    itemEl.style.transform = `translateX(${dx}px)`;
+  });
+
+  const finish = () => {
+    if (!active) return;
+    reset();
+    /*
+     * 行幅の35%（最大120px）引いたら削除。
+     * ただし下限を64pxで固定する。レイアウト計算前などで offsetWidth が 0 を
+     * 返すことがあり、そのまま割合で決めると閾値が0になって「ほんの少し指が
+     * 横に流れただけで消える」という事故になるため。
+     */
+    const width = rowEl.offsetWidth || window.innerWidth || 320;
+    const threshold = Math.max(64, Math.min(120, width * 0.35));
+    if (dx < -threshold) {
+      itemEl.style.transform = "translateX(-100%)";
+      onDelete();
+    } else {
+      itemEl.style.transform = "";
+    }
+  };
+  itemEl.addEventListener("pointerup", finish);
+  itemEl.addEventListener("pointercancel", () => { reset(); itemEl.style.transform = ""; });
+
+  // スワイプ直後の click で編集ダイアログが開かないようにする
+  itemEl.addEventListener("click", (e) => {
+    if (dx < -6) {
+      e.preventDefault();
+      e.stopPropagation();
+      dx = 0;
+    }
+  }, true);
 }
 
 /**
@@ -342,7 +454,7 @@ function renderItem(row, { editable, showWho = false }) {
  */
 function renderGroups(container, items, opts) {
   container.textContent = "";
-  const order = ["allergy", "belief", "dislike"];
+  const order = ["allergy", "dislike"];
   let rendered = 0;
 
   for (const kind of order) {
@@ -352,20 +464,22 @@ function renderGroups(container, items, opts) {
 
     const group = el("section", `group group--${kind}`);
     const head = el("div", "group__head");
-    head.append(el("span", null, DB.KINDS[kind].icon));
+    head.append(icon(DB.KINDS[kind].icon, { size: 17 }));
     head.append(el("h2", "group__title", DB.KINDS[kind].label));
     head.append(el("span", "group__count", `${list.length}件`));
     group.append(head);
 
     const box = el("div", "items");
-    for (const row of list) box.append(renderItem(row, opts));
+    for (const row of list) box.append(renderRow(row, opts));
     group.append(box);
     container.append(group);
   }
 
   if (!rendered) {
     const empty = el("div", "empty");
-    empty.append(el("span", "empty__ic", opts.emptyIcon || "🍽"));
+    const ic = el("span", "empty__ic");
+    ic.append(icon(opts.emptyIcon || "empty", { size: 34 }));
+    empty.append(ic);
     for (const line of (opts.emptyText || "").split("\n")) {
       empty.append(el("div", null, line));
     }
@@ -375,9 +489,8 @@ function renderGroups(container, items, opts) {
 
 function renderMine() {
   renderGroups($("#mine-list"), myItems(), {
-    editable: true,
-    emptyIcon: "📝",
-    emptyText: "まだ登録がありません。\n上のフォームかクイック追加から、\n食べられないものを登録しましょう。",
+    emptyIcon: "mine",
+    emptyText: "まだ登録がありません。\n上のフォームから、\n食べられないものを登録しましょう。",
   });
 }
 
@@ -405,8 +518,7 @@ function renderPartner() {
 
   const groups = el("div");
   renderGroups(groups, items, {
-    editable: false,
-    emptyIcon: "🫙",
+    emptyIcon: "partner",
     emptyText: `${nameOf(pid)}さんはまだ登録していません。`,
   });
   listBox.append(groups);
@@ -435,18 +547,17 @@ function inviteUrl() {
 
 function summaryItems() {
   let items = allItems();
-  if (state.filterNever) items = items.filter((r) => r.level === "never");
+  if (state.filterLv3) items = items.filter((r) => Number(r.level) === 3);
   return sortedItems(items);
 }
 
 function renderSummary() {
   const items = summaryItems();
   renderGroups($("#summary-list"), items, {
-    editable: false,
     showWho: true,
-    emptyIcon: "📋",
-    emptyText: state.filterNever
-      ? "「絶対NG」の登録はありません。"
+    emptyIcon: "summary",
+    emptyText: state.filterLv3
+      ? "レベル3の登録はありません。"
       : "2人ともまだ登録がありません。",
   });
   $("#share-text").textContent = buildShareText(items);
@@ -454,18 +565,14 @@ function renderSummary() {
 
 /**
  * 1項目を共有テキスト用の短い文字列にする。
- * 区分から自然に想像がつくレベル（アレルギー=絶対NG、苦手=避けたい）は
- * 書かない。全項目に注釈を付けると長くなり、肝心の食材名が埋もれるため。
+ * 区分から自然に想像がつくこと（アレルギー＝食べられない）は書かない。
+ * 全項目に注釈を付けると長くなり、肝心の名前が埋もれるため。
  */
 function itemText(r) {
   const bits = [];
-  if (r.kind === "allergy") {
-    if (r.level === "avoid") bits.push("できれば避けたい");
-    if (r.level === "small_ok") bits.push("少量なら可");
-  } else {
-    if (r.level === "never") bits.push("絶対NG");
-    if (r.level === "small_ok") bits.push("少量なら可");
-  }
+  if (r.category === "dish") bits.push("料理");
+  if (r.kind === "allergy" && Number(r.level) < 3) bits.push(DB.LEVELS[r.level].short);
+  if (r.kind === "dislike" && Number(r.level) === 3) bits.push("食べられない");
   if (r.note) bits.push(r.note);
   return r.food + (bits.length ? `（${bits.join("・")}）` : "");
 }
@@ -473,7 +580,7 @@ function itemText(r) {
 function buildShareText(items) {
   if (!items.length) return "（登録がありません）";
   const lines = [];
-  for (const kind of ["allergy", "belief", "dislike"]) {
+  for (const kind of ["allergy", "dislike"]) {
     const list = items.filter((r) => r.kind === kind);
     if (!list.length) continue;
     lines.push(`${DB.KINDS[kind].short}: ${list.map(itemText).join("・")}`);
@@ -507,10 +614,14 @@ function switchTab(tab) {
  * 追加・編集・削除（楽観的更新）
  * ================================================================== */
 
-async function addItem({ food, kind, level, note = "" }) {
+async function addItem({ food, kind, level, category, note = "" }) {
   const name = String(food || "").trim();
   if (!name) {
-    toast("食べ物の名前を入力してください。", { error: true });
+    toast("名前を入力してください。", { error: true });
+    return false;
+  }
+  if (!kind || !level) {
+    toast("区分とレベルを選んでください。", { error: true });
     return false;
   }
   if (!state.room) return false;
@@ -520,7 +631,7 @@ async function addItem({ food, kind, level, note = "" }) {
   if (dup) {
     const ok = await confirmDialog({
       title: "すでに登録されています",
-      body: `「${dup.food}」は ${DB.KINDS[dup.kind].label}／${DB.LEVELS[dup.level].label} として登録済みです。\nもう一度追加しますか？`,
+      body: `「${dup.food}」は ${DB.KINDS[dup.kind].label}／レベル${dup.level} として登録済みです。\nもう一度追加しますか？`,
       okLabel: "追加する",
       danger: false,
     });
@@ -533,14 +644,15 @@ async function addItem({ food, kind, level, note = "" }) {
   // Realtime のエコーが先に来ても id が一致してマージされる（重複表示しない）。
   mergeRow({
     id, room_id: state.room.id, user_id: myId(),
-    food: name, kind, level, note,
+    food: name, kind, level: Number(level), category, note,
     created_at: now, updated_at: now, _pending: true,
   });
   renderAll();
 
   try {
     const saved = await DB.addRestriction({
-      id, roomId: state.room.id, userId: myId(), food: name, kind, level, note,
+      id, roomId: state.room.id, userId: myId(),
+      food: name, kind, level, category, note,
     });
     mergeRow(saved);
     renderAll();
@@ -569,29 +681,23 @@ async function saveEdit(id, patch) {
   }
 }
 
+/**
+ * 削除。確認ダイアログは出さず、即削除して5秒間「元に戻す」を出す。
+ * アレルギー項目のときは、その帯を警告色にして見逃しにくくする。
+ */
 async function removeItem(row) {
-  const isAllergy = row.kind === "allergy";
-  const ok = await confirmDialog({
-    title: isAllergy ? "⚠️ アレルギー項目の削除" : "削除の確認",
-    body: isAllergy
-      ? `「${row.food}」はアレルギーとして登録されています。\n\n削除すると相手の画面からも消え、外食時に見落とす原因になります。\n本当に削除しますか？`
-      : `「${row.food}」を削除します。よろしいですか？`,
-    okLabel: isAllergy ? "理解のうえ削除する" : "削除する",
-  });
-  if (!ok) return;
-
   state.restrictions.delete(row.id);
   renderAll();
 
   try {
     await DB.deleteRestriction(row.id);
-    // 削除後5秒間だけ「元に戻す」を出す
     toast(`「${row.food}」を削除しました`, {
       duration: 5000,
+      danger: row.kind === "allergy",
       action: { label: "元に戻す", run: () => undoDelete(row) },
     });
   } catch (err) {
-    mergeRow(row);
+    mergeRow(row);                            // 消せなかったので戻す
     renderAll();
     await toastError(err);
   }
@@ -618,8 +724,11 @@ async function undoDelete(row) {
 async function openEdit(row) {
   $("#edit-food").value = row.food;
   $("#edit-note").value = row.note || "";
-  buildSeg($("#edit-kind"), "edit-kind", KIND_OPTIONS, row.kind);
-  buildSeg($("#edit-level"), "edit-level", LEVEL_OPTIONS, row.level);
+  buildSeg($("#edit-category"), "edit-category", CATEGORY_OPTIONS, row.category || "ingredient",
+    { withIcon: (v) => DB.CATEGORIES[v].icon });
+  buildSeg($("#edit-kind"), "edit-kind", KIND_OPTIONS, row.kind,
+    { withIcon: (v) => DB.KINDS[v].icon });
+  buildSeg($("#edit-level"), "edit-level", LEVEL_OPTIONS, String(row.level), { stacked: true });
 
   const result = await openDialog($("#dlg-edit"), [
     { el: $("#edit-cancel"), value: "cancel" },
@@ -634,14 +743,15 @@ async function openEdit(row) {
     food: $("#edit-food").value,
     note: $("#edit-note").value,
     kind: segValue($("#edit-kind")) || row.kind,
-    level: segValue($("#edit-level")) || row.level,
+    level: Number(segValue($("#edit-level")) || row.level),
+    category: segValue($("#edit-category")) || row.category || "ingredient",
   };
   if (!patch.food.trim()) {
-    toast("食べ物の名前は空にできません。", { error: true });
+    toast("名前は空にできません。", { error: true });
     return;
   }
   // 何も変わっていないなら通信しない
-  const changed = ["food", "note", "kind", "level"].some(
+  const changed = ["food", "note", "kind", "level", "category"].some(
     (k) => String(patch[k]).trim() !== String(row[k] ?? "").trim()
   );
   if (changed) saveEdit(row.id, patch);
@@ -831,6 +941,27 @@ async function handleJoinRoom(code) {
   }
 }
 
+async function handleLeaveRoom() {
+  const ok = await confirmDialog({
+    title: "ルームから退出",
+    body: "あなたの登録内容はルームに残りますが、相手のリストは見られなくなります。\n再参加には招待コードが必要です。よろしいですか？",
+    okLabel: "退出する",
+  });
+  if (!ok) return;
+  try {
+    await DB.leaveRoom(state.room.id, myId());
+    stopSync();
+    state.room = null;
+    state.members = [];
+    state.restrictions.clear();
+    showScreen("room");
+    initRoomScreen();
+    toast("ルームから退出しました");
+  } catch (err) {
+    await toastError(err);
+  }
+}
+
 /* ================================================================== *
  * ルーム内のデータ読み込み・購読
  * ================================================================== */
@@ -900,27 +1031,6 @@ function startSync() {
       });
     },
   });
-}
-
-async function handleLeaveRoom() {
-  const ok = await confirmDialog({
-    title: "ルームから退出",
-    body: "あなたの登録内容はルームに残りますが、相手のリストは見られなくなります。\n再参加には招待コードが必要です。よろしいですか？",
-    okLabel: "退出する",
-  });
-  if (!ok) return;
-  try {
-    await DB.leaveRoom(state.room.id, myId());
-    stopSync();
-    state.room = null;
-    state.members = [];
-    state.restrictions.clear();
-    showScreen("room");
-    initRoomScreen();
-    toast("ルームから退出しました");
-  } catch (err) {
-    await toastError(err);
-  }
 }
 
 function stopSync() {
@@ -1000,43 +1110,59 @@ function toLoggedOut() {
 }
 
 /* ================================================================== *
+ * 追加フォーム
+ * ================================================================== */
+
+/** 区分とレベルは必須。両方選ぶまで追加ボタンを押せないようにする。 */
+function refreshAddButton() {
+  markSegFilled($("#add-kind"));
+  markSegFilled($("#add-level"));
+  $("#btn-add").disabled = !(segValue($("#add-kind")) && segValue($("#add-level")));
+}
+
+/** フォームを初期状態（区分・レベルは未選択、分類は食材）に戻す */
+function resetAddForm() {
+  $("#add-food").value = "";
+  $("#add-note").value = "";
+  buildSeg($("#add-category"), "add-category", CATEGORY_OPTIONS, "ingredient",
+    { withIcon: (v) => DB.CATEGORIES[v].icon });
+  buildSeg($("#add-kind"), "add-kind", KIND_OPTIONS, null,
+    { withIcon: (v) => DB.KINDS[v].icon });
+  buildSeg($("#add-level"), "add-level", LEVEL_OPTIONS, null, { stacked: true });
+  refreshAddButton();
+}
+
+/* ================================================================== *
  * イベント配線
  * ================================================================== */
 
 function wireEvents() {
+  mountIcons();               // HTML に置いたプレースホルダをSVGに差し替える
+
   // --- タブ ---
   $$("[data-tabbtn]").forEach((b) =>
     b.addEventListener("click", () => switchTab(b.dataset.tabbtn))
   );
 
   // --- 追加フォーム ---
-  buildSeg($("#add-kind"), "add-kind", KIND_OPTIONS, "allergy");
-  buildSeg($("#add-level"), "add-level", LEVEL_OPTIONS, "never");
-  buildChips();
+  resetAddForm();
   guardIme($("#add-food"), () => $("#form-add").requestSubmit());
   guardIme($("#add-note"), () => $("#form-add").requestSubmit());
-
-  // 区分を変えたら、その区分にありがちなレベルを既定に寄せる。
-  // ただし利用者が自分でレベルを触ったあとは勝手に戻さない。
-  let levelTouched = false;
-  $("#add-level").addEventListener("change", () => (levelTouched = true));
-  $("#add-kind").addEventListener("change", () => {
-    if (levelTouched) return;
-    const kind = segValue($("#add-kind"));
-    buildSeg($("#add-level"), "add-level", LEVEL_OPTIONS, kind === "allergy" ? "never" : "avoid");
-  });
+  $("#add-kind").addEventListener("change", refreshAddButton);
+  $("#add-level").addEventListener("change", refreshAddButton);
 
   $("#form-add").addEventListener("submit", async (e) => {
     e.preventDefault();
     const ok = await addItem({
       food: $("#add-food").value,
-      kind: segValue($("#add-kind")) || "dislike",
-      level: segValue($("#add-level")) || "avoid",
+      kind: segValue($("#add-kind")),
+      level: segValue($("#add-level")),
+      category: segValue($("#add-category")) || "ingredient",
       note: $("#add-note").value,
     });
+    // 選び忘れによる誤登録を防ぐため、追加後は必ず未選択に戻す
     if (ok) {
-      $("#add-food").value = "";
-      $("#add-note").value = "";
+      resetAddForm();
       $("#add-food").focus();
     }
   });
@@ -1085,8 +1211,8 @@ function wireEvents() {
   });
 
   // --- まとめ ---
-  $("#filter-never").addEventListener("change", (e) => {
-    state.filterNever = e.target.checked;
+  $("#filter-lv3").addEventListener("change", (e) => {
+    state.filterLv3 = e.target.checked;
     renderSummary();
   });
   $("#btn-copy-share").addEventListener("click", () =>
