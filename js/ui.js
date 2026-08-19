@@ -886,6 +886,19 @@ function initAuthScreen() {
   if (Auth.linkError) setLoginNote(Auth.linkError, true);
   startCooldownTicker();
 
+  /*
+   * ホーム画面から起動している場合、マジックリンクは必ず Safari 側で開いてしまい
+   * このアプリには戻ってこられない（保存領域が別のため）。
+   * その環境ではコード入力を主役に切り替える。
+   */
+  if (Auth.isStandalone()) {
+    $("#standalone-note").hidden = false;
+    $("#otp-card").open = true;
+    $("#otp-summary").textContent = "コードでログイン";
+    $("#otp-help").textContent =
+      "「ログイン用メールを送る」を押したあと、届いたメールの数字のコードをここに入力してください。リンクの方はタップしないでください。";
+  }
+
   guardIme($("#login-email"));
   $("#form-login").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -897,8 +910,9 @@ function initAuthScreen() {
     const res = await Auth.sendMagicLink($("#login-email").value);
     if (res.ok) {
       setLoginNote(
-        "メールを送りました。届いたリンクを開くか、6桁コードを下の欄に入力してください。" +
-          "（届かない場合は迷惑メールもご確認ください）",
+        Auth.isStandalone()
+          ? "メールを送りました。リンクはタップせず、本文の数字のコードを下の欄に入力してください。（届かない場合は迷惑メールもご確認ください）"
+          : "メールを送りました。届いたリンクを開くか、コードを下の欄に入力してください。（届かない場合は迷惑メールもご確認ください）",
         false
       );
       $("#otp-card").open = true;
@@ -1311,6 +1325,9 @@ async function boot() {
     return;
   }
   showScreen("loading");
+
+  // ログイン情報をブラウザに消されにくくする（対応環境のみ・失敗しても無害）
+  Auth.requestPersistentStorage();
 
   // 招待コードは ?invite=XXXX で渡ってくる。マジックリンクの往復で
   // URL が消えるので、セッション確定前に控えておく。

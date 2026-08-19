@@ -11,6 +11,18 @@
 <title>ふたりごはん</title>
 <!-- ファビコンもロゴと同じ線画（絵文字を使わない） -->
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232E9E8B' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M2.6 12.2h18.8a9.4 9.4 0 0 1-18.8 0Z'/><path d='M12.4 9.9c-.6-3.1 1.2-6 4.4-7 .8 3.2-1.1 6.2-4.4 7Z'/></svg>">
+
+<!--
+  ホーム画面に追加したときに「ちゃんとしたアプリ」として扱われるための設定。
+  iOS 16.4+ は manifest を見るが、それ以前は apple-* の meta しか見ないので両方置く。
+-->
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ふたりごはん">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+
 <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -69,8 +81,17 @@
     <div class="card">
       <h2>ログイン</h2>
       <p class="muted">
-        メールアドレスを入れると、ログイン用のリンクと6桁のコードが届きます。
+        メールアドレスを入れると、ログイン用のリンクと確認コードが届きます。
         パスワードは要りません。
+      </p>
+      <!-- ホーム画面から起動しているときだけ出す案内（ui.js が制御） -->
+      <p class="tip" id="standalone-note" hidden>
+        <span data-icon="allergy" data-icon-size="15"></span>
+        <span>
+          ホーム画面のアイコンから起動しています。この場合、
+          <b>メールのリンクを開いてもここには戻れません</b>（Safari 側で開いてしまうため）。<br>
+          メールに書かれた<b>数字のコード</b>を、下の欄に入力してください。
+        </span>
       </p>
       <form id="form-login" novalidate>
         <label class="field">
@@ -86,16 +107,16 @@
     </div>
 
     <details class="card" id="otp-card">
-      <summary>リンクで戻れないときは、6桁コードを入力</summary>
-      <p class="muted">
+      <summary id="otp-summary">リンクで戻れないときは、コードを入力</summary>
+      <p class="muted" id="otp-help">
         メールアプリの中でリンクが開いてしまい、この画面に戻れない場合は、
-        メール本文の6桁コードを入力してください。
+        メール本文の数字のコードを入力してください。
       </p>
       <form id="form-otp" novalidate>
         <label class="field">
-          <span class="field__label">6桁コード</span>
+          <span class="field__label">メールに届いたコード</span>
           <input type="text" id="otp-code" inputmode="numeric" autocomplete="one-time-code"
-                 pattern="[0-9]*" maxlength="6" placeholder="123456">
+                 pattern="[0-9]*" maxlength="10" placeholder="12345678">
         </label>
         <button type="submit" class="btn btn--block">コードでログイン</button>
       </form>

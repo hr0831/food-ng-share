@@ -37,6 +37,41 @@ export function redirectUrl() {
   return window.location.origin + window.location.pathname;
 }
 
+/**
+ * ホーム画面に追加した「インストール済み」状態で起動しているか。
+ *
+ * iOS ではホーム画面のWebアプリと Safari で保存領域（localStorage）が
+ * 完全に別々になる。メールのマジックリンクをタップすると必ず Safari 側で
+ * 開くため、そこでログインが成立してもホーム画面アプリには何も残らず、
+ * 毎回ログイン画面に戻ってしまう。
+ *
+ * この状態では「リンクではなくコードを入力してもらう」しか手がないので、
+ * 判定して案内を切り替えるために使う。
+ */
+export function isStandalone() {
+  try {
+    return (
+      window.matchMedia?.("(display-mode: standalone)")?.matches === true ||
+      window.matchMedia?.("(display-mode: fullscreen)")?.matches === true ||
+      window.navigator.standalone === true      // iOS Safari の独自プロパティ
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 保存領域をブラウザに消されにくくするよう要求する。
+ * 対応していない環境では何も起きない（拒否されても実害はない）。
+ */
+export async function requestPersistentStorage() {
+  try {
+    if (navigator.storage?.persist) await navigator.storage.persist();
+  } catch {
+    /* 未対応・拒否。ログインが早めに切れるだけなので握りつぶす */
+  }
+}
+
 /** 前回入力したメールアドレス（再訪時の入力補助 / OTP 検証に使う） */
 export function lastEmail() {
   return localStorage.getItem(LAST_EMAIL_KEY) || "";
@@ -78,7 +113,7 @@ export function onAuthChange(callback) {
 }
 
 /**
- * マジックリンク（＋ 6桁コード）をメールで送る。
+ * マジックリンク（＋ 確認コード）をメールで送る。
  * @returns {Promise<{ok: true} | {ok: false, message: string}>}
  */
 export async function sendMagicLink(email) {
@@ -109,15 +144,20 @@ export async function sendMagicLink(email) {
 }
 
 /**
- * メールに書かれた6桁コードでログインする。
+ * メールに書かれた確認コードでログインする。
  * 別のブラウザ（メールアプリの内蔵ブラウザ等）でリンクが開いてしまい
- * 戻ってこられない場合の逃げ道として用意している。
+ * 戻ってこられない場合や、ホーム画面アプリから使う場合の入口。
+ *
+ * 桁数を6に決め打ちしないのは、Supabase 側の設定（Email OTP Length）で
+ * 6〜10桁の間で変えられるため。設定を変えた瞬間にログインできなくなるのを避ける。
  */
 export async function verifyEmailOtp(email, token) {
   const trimmed = String(email || "").trim();
   const code = String(token || "").replace(/\D/g, "");
   if (!trimmed) return { ok: false, message: "メールアドレスを入力してください。" };
-  if (code.length < 6) return { ok: false, message: "6桁のコードを入力してください。" };
+  if (code.length < 6 || code.length > 10) {
+    return { ok: false, message: "メールに届いた数字のコードをそのまま入力してください。" };
+  }
 
   const { error } = await supabase.auth.verifyOtp({
     email: trimmed,
@@ -161,7 +201,7 @@ export function describeAuthError(error) {
     return "メールログインが無効になっています。Supabase の Authentication 設定を確認してください。";
   }
   if (msg.includes("invalid") && msg.includes("token")) {
-    return "コードが違うようです。メールに書かれた6桁の数字を確認してください。";
+    return "コードが違うようです。メールに書かれた数字をもう一度確認してください。";
   }
   if (msg.includes("email address") && msg.includes("invalid")) {
     return "このメールアドレスは受け付けられませんでした。別のアドレスをお試しください。";
