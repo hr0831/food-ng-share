@@ -1,0 +1,60 @@
+########################################################################
+# Supabase 無料枠の自動一時停止を防ぐための keepalive
+#
+# 無料プランのプロジェクトは「1週間アクセスが無い」と自動的に一時停止され、
+# ダッシュボードから手動で復元するまで使えなくなる。
+# たまにしか使わないアプリでは必ず踏むので、1日1回だけ軽い GET を投げておく。
+#
+# 使うのは config.js に書いてある publishable キー。
+# 公開前提のキーなので、ワークフローから読んでも問題ない
+# （secret キーは絶対にここでも使わないこと）。
+########################################################################
+name: keepalive
+
+on:
+  schedule:
+    # 毎日 UTC 03:00（日本時間 12:00）に実行
+    - cron: "0 3 * * *"
+  # Actions タブから手動でも実行できるようにしておく
+  workflow_dispatch:
+
+# このワークフローはリポジトリの中身を読むだけ
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: heartbeat テーブルに GET する
+        # 失敗してもワークフローを赤くしない。
+        # 一時的な通信エラーで毎回メール通知が飛ぶ方が困るため。
+        continue-on-error: true
+        run: |
+          set -u
+
+          # 設定は config.js の1か所だけを見る（二重管理を避ける）
+          URL=$(sed -n 's/^ *export const SUPABASE_URL *= *"\([^"]*\)".*/\1/p' config.js | head -1)
+          KEY=$(sed -n 's/^ *export const SUPABASE_PUBLISHABLE_KEY *= *"\([^"]*\)".*/\1/p' config.js | head -1)
+
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "::warning::config.js から SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY を読み取れませんでした"
+            exit 0
+          fi
+
+          echo "ping -> ${URL}/rest/v1/heartbeat"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 30 \
+            -H "apikey: ${KEY}" \
+            -H "Authorization: Bearer ${KEY}" \
+            "${URL}/rest/v1/heartbeat?select=id&limit=1")
+
+          echo "HTTP ${STATUS}"
+          if [ "$STATUS" = "200" ]; then
+            echo "::notice::プロジェクトは稼働中です"
+          else
+            # 540 は一時停止中。その場合は手動復元が必要なので警告だけ出す。
+            echo "::warning::想定外の応答 (HTTP ${STATUS})。プロジェクトが一時停止しているかもしれません"
+          fi
