@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<!-- viewport-fit=cover: iOS のセーフエリア（ホームバー）を env() で扱えるようにする -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#FBF9F4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#17150F" media="(prefers-color-scheme: dark)">
+<meta name="description" content="友人と「食べられないもの」を共有するアプリ">
+<title>NGフード共有</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍽</text></svg>">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+<header class="appbar">
+  <h1 class="appbar__title">🍽 NGフード共有</h1>
+  <span class="conn" id="conn" data-state="connecting" role="status">接続中</span>
+  <button type="button" class="iconbtn" id="btn-settings" aria-label="設定" hidden>⚙️</button>
+</header>
+
+<p class="presence" id="presence" hidden></p>
+
+<main id="main">
+
+  <!-- ============ 読み込み中（スケルトン） ============ -->
+  <section class="screen" data-screen="loading">
+    <div class="card">
+      <div class="sk sk--title"></div>
+      <div class="sk sk--line"></div>
+      <div class="sk sk--line" style="width:60%"></div>
+    </div>
+    <div class="card">
+      <div class="sk sk--title"></div>
+      <div class="sk sk--line"></div>
+      <div class="sk sk--line" style="width:75%"></div>
+    </div>
+  </section>
+
+  <!-- ============ config.js 未設定 ============ -->
+  <section class="screen" data-screen="config" hidden>
+    <div class="card card--warn">
+      <h2>セットアップが未完了です</h2>
+      <p class="muted">
+        <code>config.js</code> の <code>SUPABASE_URL</code> と
+        <code>SUPABASE_PUBLISHABLE_KEY</code> がプレースホルダのままです。
+        README の手順に沿って、Supabase の Project URL と publishable キー
+        （<code>sb_publishable_…</code>）を書き込んでください。
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ 致命的エラー ============ -->
+  <section class="screen" data-screen="error" hidden>
+    <div class="card card--warn">
+      <h2 id="error-title">接続できませんでした</h2>
+      <p class="muted" id="error-body"></p>
+      <button type="button" class="btn btn--primary" id="btn-retry">再試行</button>
+    </div>
+  </section>
+
+  <!-- ============ ログイン ============ -->
+  <section class="screen" data-screen="auth" hidden>
+    <div class="card">
+      <h2>ログイン</h2>
+      <p class="muted">
+        メールアドレスを入れると、ログイン用のリンクと6桁のコードが届きます。
+        パスワードは要りません。
+      </p>
+      <form id="form-login" novalidate>
+        <label class="field">
+          <span class="field__label">メールアドレス</span>
+          <input type="email" id="login-email" name="email" inputmode="email"
+                 autocomplete="email" placeholder="you@example.com" required>
+        </label>
+        <button type="submit" class="btn btn--primary btn--block" id="btn-send">
+          ログイン用メールを送る
+        </button>
+      </form>
+      <p class="note" id="login-note" hidden></p>
+    </div>
+
+    <details class="card" id="otp-card">
+      <summary>リンクで戻れないときは、6桁コードを入力</summary>
+      <p class="muted">
+        メールアプリの中でリンクが開いてしまい、この画面に戻れない場合は、
+        メール本文の6桁コードを入力してください。
+      </p>
+      <form id="form-otp" novalidate>
+        <label class="field">
+          <span class="field__label">6桁コード</span>
+          <input type="text" id="otp-code" inputmode="numeric" autocomplete="one-time-code"
+                 pattern="[0-9]*" maxlength="6" placeholder="123456">
+        </label>
+        <button type="submit" class="btn btn--block">コードでログイン</button>
+      </form>
+    </details>
+  </section>
+
+  <!-- ============ ルーム未所属 ============ -->
+  <section class="screen" data-screen="room" hidden>
+    <div class="card">
+      <h2>はじめに</h2>
+      <label class="field">
+        <span class="field__label">あなたの表示名</span>
+        <input type="text" id="setup-name" maxlength="20" placeholder="はるか" autocomplete="nickname">
+      </label>
+      <p class="note">まとめ画面で「誰のNGか」を示すのに使います。</p>
+    </div>
+
+    <div class="card">
+      <h2>ルームを作る</h2>
+      <p class="muted">あなたが招待する側の場合はこちら。作成後に招待コードが出ます。</p>
+      <button type="button" class="btn btn--primary btn--block" id="btn-create-room">
+        ルームを作成する
+      </button>
+    </div>
+
+    <div class="card">
+      <h2>招待コードで参加する</h2>
+      <p class="muted">相手からコード（またはリンク）を受け取っている場合はこちら。</p>
+      <form id="form-join" novalidate>
+        <label class="field">
+          <span class="field__label">招待コード</span>
+          <input type="text" id="join-code" maxlength="16" autocapitalize="characters"
+                 autocomplete="off" spellcheck="false" placeholder="A1B2C3D4E5">
+        </label>
+        <button type="submit" class="btn btn--block">参加する</button>
+      </form>
+    </div>
+
+    <button type="button" class="linkbtn" id="btn-signout-early">ログアウト</button>
+  </section>
+
+  <!-- ============ メイン（3タブ） ============ -->
+  <section class="screen" data-screen="app" hidden>
+
+    <!-- ---- タブ1: マイリスト ---- -->
+    <div class="tabpanel" data-tab="mine">
+      <form class="card" id="form-add" novalidate>
+        <h2>追加する</h2>
+
+        <label class="field">
+          <span class="field__label">食べ物の名前</span>
+          <input type="text" id="add-food" maxlength="40" placeholder="例: えび"
+                 autocomplete="off" enterkeyhint="done">
+        </label>
+
+        <fieldset class="seg">
+          <legend class="field__label">区分</legend>
+          <div class="seg__row" id="add-kind"></div>
+        </fieldset>
+
+        <fieldset class="seg">
+          <legend class="field__label">レベル</legend>
+          <div class="seg__row" id="add-level"></div>
+        </fieldset>
+
+        <label class="field">
+          <span class="field__label">メモ（任意）</span>
+          <input type="text" id="add-note" maxlength="120" placeholder="例: 加熱済みも不可" autocomplete="off">
+        </label>
+
+        <button type="submit" class="btn btn--primary btn--block">リストに追加</button>
+      </form>
+
+      <div class="card">
+        <h2>クイック追加</h2>
+        <p class="note">タップするとすぐ登録されます。あとから編集できます。</p>
+        <h3 class="chips__head chips__head--danger">⚠️ アレルギー表示の対象になりやすいもの</h3>
+        <div class="chips" id="chips-allergy"></div>
+        <h3 class="chips__head">🥄 苦手として挙がりやすいもの</h3>
+        <div class="chips" id="chips-dislike"></div>
+      </div>
+
+      <div id="mine-list"></div>
+    </div>
+
+    <!-- ---- タブ2: 相手のリスト ---- -->
+    <div class="tabpanel" data-tab="partner" hidden>
+      <div id="invite-panel" hidden>
+        <div class="card">
+          <h2>友人を招待する</h2>
+          <p class="muted">まだ相手が参加していません。下のコードかリンクを相手に渡してください。</p>
+          <div class="invite-code" id="invite-code">--------</div>
+          <div class="btnrow">
+            <button type="button" class="btn btn--primary" id="btn-share">リンクを共有</button>
+            <button type="button" class="btn" id="btn-copy-code">コードをコピー</button>
+          </div>
+          <p class="note" id="invite-status"></p>
+          <div class="btnrow btnrow--sub">
+            <button type="button" class="linkbtn" id="btn-revoke">コードを無効化</button>
+            <button type="button" class="linkbtn" id="btn-regen">コードを再発行</button>
+          </div>
+        </div>
+      </div>
+      <div id="partner-list"></div>
+    </div>
+
+    <!-- ---- タブ3: まとめ ---- -->
+    <div class="tabpanel" data-tab="summary" hidden>
+      <div class="card card--tight">
+        <label class="switch">
+          <input type="checkbox" id="filter-never">
+          <span>「絶対NG」だけ表示（お店に伝える用）</span>
+        </label>
+      </div>
+      <div id="summary-list"></div>
+      <div class="card">
+        <h2>共有用テキスト</h2>
+        <p class="note">お店やグループLINEにそのまま貼れる短い文章です。</p>
+        <pre class="sharetext" id="share-text"></pre>
+        <div class="btnrow">
+          <button type="button" class="btn btn--primary" id="btn-copy-share">コピー</button>
+          <button type="button" class="btn" id="btn-share-text">共有</button>
+        </div>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<!-- 常時表示の注記 + タブバー -->
+<div class="footerbar">
+  <p class="disclaimer">
+    ⚠️ このアプリは参考情報です。アレルギーがある場合は、注文時に必ずお店へ直接お伝えください。
+  </p>
+  <nav class="tabbar" id="tabbar" hidden aria-label="画面切り替え">
+    <button type="button" data-tabbtn="mine"    aria-current="page"><span class="tabbar__ic">📝</span>マイリスト</button>
+    <button type="button" data-tabbtn="partner"><span class="tabbar__ic">👤</span>相手のリスト</button>
+    <button type="button" data-tabbtn="summary"><span class="tabbar__ic">📋</span>まとめ</button>
+  </nav>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
+
+<!-- ============ 確認ダイアログ ============ -->
+<dialog id="dlg-confirm" class="dlg">
+  <form method="dialog">
+    <h2 id="confirm-title">確認</h2>
+    <p id="confirm-body"></p>
+    <div class="dlg__actions">
+      <button type="button" value="cancel" class="btn" id="confirm-cancel">キャンセル</button>
+      <button type="submit" value="ok" class="btn btn--danger" id="confirm-ok">削除する</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ 編集ダイアログ ============ -->
+<dialog id="dlg-edit" class="dlg">
+  <form method="dialog" id="form-edit">
+    <h2>項目を編集</h2>
+    <label class="field">
+      <span class="field__label">食べ物の名前</span>
+      <input type="text" id="edit-food" maxlength="40" autocomplete="off">
+    </label>
+    <fieldset class="seg">
+      <legend class="field__label">区分</legend>
+      <div class="seg__row" id="edit-kind"></div>
+    </fieldset>
+    <fieldset class="seg">
+      <legend class="field__label">レベル</legend>
+      <div class="seg__row" id="edit-level"></div>
+    </fieldset>
+    <label class="field">
+      <span class="field__label">メモ（任意）</span>
+      <input type="text" id="edit-note" maxlength="120" autocomplete="off">
+    </label>
+    <div class="dlg__actions">
+      <button type="button" value="cancel" class="btn" id="edit-cancel">キャンセル</button>
+      <button type="submit" value="save" class="btn btn--primary" id="edit-save">保存</button>
+    </div>
+    <button type="button" class="linkbtn linkbtn--danger" id="edit-delete">この項目を削除</button>
+  </form>
+</dialog>
+
+<!-- ============ 設定ダイアログ ============ -->
+<dialog id="dlg-settings" class="dlg">
+  <form method="dialog" id="form-settings">
+    <h2>設定</h2>
+    <label class="field">
+      <span class="field__label">表示名</span>
+      <input type="text" id="settings-name" maxlength="20" autocomplete="nickname">
+    </label>
+    <p class="note" id="settings-account"></p>
+    <div class="dlg__actions">
+      <button type="button" value="cancel" class="btn" id="settings-close">閉じる</button>
+      <button type="submit" value="save" class="btn btn--primary" id="settings-save">保存</button>
+    </div>
+    <div class="btnrow btnrow--sub">
+      <button type="button" class="linkbtn" id="btn-signout">ログアウト</button>
+      <button type="button" class="linkbtn linkbtn--danger" id="btn-leave">ルームから退出</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="module" src="./js/ui.js"></script>
+</body>
+</html>

@@ -1,0 +1,611 @@
+@charset "UTF-8";
+
+/* =====================================================================
+   NGフード共有 / スタイル
+   スマホファースト（基準幅 375px）。影は使わず、細い境界線で構造を作る。
+   ===================================================================== */
+
+:root {
+  --bg:          #FBF9F4;  /* 温かみのあるオフホワイト */
+  --surface:     #FFFFFF;
+  --border:      #E8E4DA;
+  --text:        #1F1D1A;
+  --text-muted:  #6E6A62;
+  --accent:      #C96F4A;  /* テラコッタ。主要ボタン・選択状態 */
+  --accent-soft: #F7E8E0;
+  --danger:      #B3382C;  /* アレルギー・絶対NG */
+  --danger-soft: #FAE6E3;
+  --belief:      #7A6A4F;  /* 宗教・信条 */
+  --dislike:     #8A8578;  /* 苦手・好み */
+  --online:      #5C8A5E;  /* プレゼンス表示 */
+
+  --r-chip: 999px;
+  --r-card: 12px;
+  --r-btn:  10px;
+
+  /* タブバー＋注記の高さ。ui.js が実測して上書きする（下は保険の初期値） */
+  --footer-h: 108px;
+
+  --font: -apple-system, "Hiragino Sans", "Yu Gothic UI", "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:          #14120E;
+    --surface:     #1E1B16;
+    --border:      #343027;
+    --text:        #F2EEE6;
+    --text-muted:  #A39C8E;
+    --accent:      #E08A63;
+    --accent-soft: #3B2A21;
+    --danger:      #F08A7E;
+    --danger-soft: #3D201C;
+    --belief:      #C6B189;
+    --dislike:     #ABA595;
+    --online:      #82B586;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.6;
+  /* iOS でスクロールが footer 下に潜り込まないように */
+  -webkit-text-size-adjust: 100%;
+}
+
+/* --footer-h は ui.js が .footerbar の実測高さ（セーフエリア込み）で上書きする */
+body {
+  padding-bottom: calc(var(--footer-h) + 16px);
+}
+
+h1, h2, h3 { margin: 0; font-weight: 700; }
+h2 { font-size: 1.0625rem; letter-spacing: .01em; }
+h3 { font-size: .875rem; }
+p  { margin: 0; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .875em;
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* ---------------------------------------------------------------- *
+   レイアウト
+   ---------------------------------------------------------------- */
+
+.appbar,
+main,
+.footerbar > * {
+  max-width: 640px;      /* PC では中央寄せ */
+  margin-inline: auto;
+}
+
+.appbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: saturate(150%) blur(8px);
+  border-bottom: 1px solid var(--border);
+  width: 100%;
+}
+.appbar__title {
+  font-size: .9375rem;
+  font-weight: 700;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+main {
+  padding: 16px 16px 24px;
+  display: block;
+}
+
+/* ---------------------------------------------------------------- *
+   接続状態 / プレゼンス
+   ---------------------------------------------------------------- */
+
+.conn {
+  flex: 0 0 auto;
+  font-size: .6875rem;
+  line-height: 1;
+  padding: 5px 9px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.conn[data-state="online"]       { color: var(--online);  border-color: color-mix(in srgb, var(--online) 45%, var(--border)); }
+.conn[data-state="reconnecting"] { color: var(--accent);  border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.conn[data-state="offline"]      { color: var(--text-muted); }
+
+.presence {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 6px 16px;
+  font-size: .75rem;
+  color: var(--online);
+}
+.presence::before {
+  content: "";
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--online);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* ---------------------------------------------------------------- *
+   カード / 基本パーツ
+   ---------------------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  padding: 16px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.card--tight { padding: 12px 16px; }
+.card--warn {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+  background: var(--danger-soft);
+}
+.card--warn h2 { color: var(--danger); }
+
+.muted { color: var(--text-muted); font-size: .875rem; }
+.note  { color: var(--text-muted); font-size: .75rem; line-height: 1.5; }
+.note--error { color: var(--danger); }
+
+/* --- 入力 ------------------------------------------------------- */
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field__label {
+  font-size: .75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 0;
+}
+input[type="text"],
+input[type="email"] {
+  /* 16px 未満だと iOS がフォーカス時に自動ズームするため 16px 固定 */
+  font-size: 16px;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-btn);
+  padding: 11px 12px;
+  min-height: 44px;
+  width: 100%;
+}
+input:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --- ボタン ----------------------------------------------------- */
+
+.btn {
+  font-family: inherit;
+  font-size: .9375rem;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-btn);
+  min-height: 44px;
+  padding: 10px 16px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn--danger  { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn--block   { width: 100%; }
+.btn[disabled] { opacity: .5; cursor: default; }
+
+.iconbtn {
+  flex: 0 0 auto;
+  width: 44px; height: 44px;
+  display: grid; place-items: center;
+  font-size: 1.125rem;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-btn);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.linkbtn {
+  font-family: inherit;
+  font-size: .8125rem;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--r-btn);
+  min-height: 44px;
+  padding: 0 8px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.linkbtn--danger { color: var(--danger); }
+
+.btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
+.btnrow > .btn { flex: 1 1 140px; }
+.btnrow--sub { justify-content: space-between; gap: 4px; }
+
+/* --- セグメント（区分・レベルの3択） ---------------------------- */
+
+.seg { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.seg legend { padding: 0; }
+.seg__row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.seg__opt { position: relative; }
+.seg__opt input {
+  position: absolute; inset: 0;
+  opacity: 0; margin: 0;
+  width: 100%; height: 100%;
+  cursor: pointer;
+}
+.seg__opt span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 44px;
+  padding: 6px 4px;
+  font-size: .8125rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--text-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-btn);
+}
+.seg__opt input:checked + span {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+/* アレルギーだけは選択色を警告色にして、区分の違いを色でも伝える */
+.seg__opt input[value="allergy"]:checked + span,
+.seg__opt input[value="never"]:checked + span {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+.seg__opt input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* --- スイッチ（チェックボックス） -------------------------------- */
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: .875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.switch input { width: 22px; height: 22px; accent-color: var(--danger); flex: 0 0 auto; }
+
+/* --- チップ ----------------------------------------------------- */
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips__head {
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.chips__head--danger { color: var(--danger); }
+
+.chip {
+  font-family: inherit;
+  font-size: .875rem;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-chip);
+  min-height: 44px;          /* タップ領域の下限 */
+  padding: 6px 16px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.chip--allergy { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); color: var(--danger); }
+.chip[disabled] { opacity: .4; }
+
+/* ---------------------------------------------------------------- *
+   リスト（登録済み項目）
+   ---------------------------------------------------------------- */
+
+.group { margin-bottom: 14px; }
+.group__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 8px;
+}
+.group__title { font-size: .875rem; font-weight: 700; }
+.group__count { font-size: .75rem; color: var(--text-muted); }
+
+/* アレルギーのセクションは枠ごと警告色にして、苦手と一目で区別できるようにする */
+.group--allergy .group__title { color: var(--danger); }
+.group--allergy .items { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+.group--belief  .group__title { color: var(--belief); }
+.group--dislike .group__title { color: var(--dislike); }
+
+.items {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  overflow: hidden;
+}
+.group--allergy .items { background: var(--danger-soft); }
+
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  font-size: 1rem;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--border);
+  min-height: 52px;
+  padding: 12px 14px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.item:first-child { border-top: 0; }
+.item--readonly { cursor: default; }
+.item--pending { opacity: .55; }
+
+.item__ic { flex: 0 0 auto; font-size: 1.0625rem; line-height: 1.5; }
+.item__body { flex: 1 1 auto; min-width: 0; }
+.item__food { font-weight: 700; word-break: break-word; }
+.item__meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; align-items: center; }
+.item__note { font-size: .8125rem; color: var(--text-muted); margin-top: 2px; word-break: break-word; }
+.item__edit { flex: 0 0 auto; font-size: .75rem; color: var(--text-muted); }
+
+.badge {
+  font-size: .6875rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.badge--never   { background: var(--danger); border-color: var(--danger); color: #fff; }
+.badge--avoid   { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.badge--who     { background: var(--accent-soft); border-color: transparent; color: var(--text); }
+.badge--allergy { background: var(--danger); border-color: var(--danger); color: #fff; }
+.badge--belief  { color: var(--belief); border-color: color-mix(in srgb, var(--belief) 45%, var(--border)); }
+.badge--dislike { color: var(--dislike); }
+
+/* 空状態 */
+.empty {
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--r-card);
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: .875rem;
+  line-height: 1.7;
+}
+.empty__ic { display: block; font-size: 1.75rem; margin-bottom: 6px; }
+
+/* ---------------------------------------------------------------- *
+   招待 / 共有テキスト
+   ---------------------------------------------------------------- */
+
+.invite-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-align: center;
+  padding: 14px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--bg);
+  word-break: break-all;
+  user-select: all;
+}
+.invite-code--revoked { color: var(--text-muted); text-decoration: line-through; }
+
+.sharetext {
+  font-family: var(--font);
+  font-size: .875rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+}
+
+/* ---------------------------------------------------------------- *
+   フッター（注記＋タブバー）
+   ---------------------------------------------------------------- */
+
+.footerbar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 30;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom, 0px);   /* iOS ホームバー対応 */
+}
+
+.disclaimer {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 7px 16px;
+  font-size: .6875rem;
+  line-height: 1.45;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-bottom: 1px solid var(--border);
+}
+
+.tabbar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+.tabbar button {
+  font-family: inherit;
+  font-size: .6875rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+  border-top: 2px solid transparent;
+  min-height: 54px;
+  padding: 6px 2px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  -webkit-tap-highlight-color: transparent;
+}
+.tabbar__ic { font-size: 1.25rem; line-height: 1.1; }
+.tabbar button[aria-current="page"] {
+  color: var(--accent);
+  border-top-color: var(--accent);
+}
+
+/* ---------------------------------------------------------------- *
+   トースト
+   ---------------------------------------------------------------- */
+
+.toasts {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--footer-h) + 12px);
+  z-index: 40;
+  width: min(calc(100% - 24px), 616px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--text);
+  color: var(--bg);
+  border-radius: var(--r-btn);
+  padding: 12px 14px;
+  font-size: .875rem;
+  line-height: 1.4;
+}
+.toast--error { background: var(--danger); color: #fff; }
+.toast__msg { flex: 1 1 auto; }
+.toast__action {
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: .8125rem;
+  font-weight: 700;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 18%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
+  border-radius: var(--r-chip);
+  min-height: 34px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------- *
+   ダイアログ
+   ---------------------------------------------------------------- */
+
+.dlg {
+  width: min(calc(100% - 32px), 420px);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0;
+  /* iOS Safari のダイアログは既定でセーフエリアを考慮しないので余白で逃がす */
+  margin: auto;
+}
+.dlg::backdrop { background: rgba(0, 0, 0, .45); }
+.dlg form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  max-height: 82vh;
+  overflow-y: auto;
+}
+.dlg__actions { display: flex; gap: 8px; margin-top: 4px; }
+.dlg__actions .btn { flex: 1 1 0; }
+/* 確認文は改行を活かす（アレルギー削除の強い警告文が2段落になる） */
+#confirm-body { white-space: pre-line; font-size: .9375rem; line-height: 1.65; }
+#dlg-confirm h2 { font-size: 1rem; }
+
+/* ---------------------------------------------------------------- *
+   スケルトン
+   ---------------------------------------------------------------- */
+
+.sk {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--border) 25%, var(--bg) 50%, var(--border) 75%);
+  background-size: 200% 100%;
+  animation: sk 1.4s linear infinite;
+}
+.sk--title { height: 18px; width: 40%; }
+.sk--line  { height: 13px; width: 100%; }
+@keyframes sk { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sk { animation: none; }
+  * { transition: none !important; }
+}
+
+/* details（6桁コード欄）の見出し */
+details.card > summary {
+  font-size: .875rem;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 24px;
+  list-style: revert;
+}
+details.card[open] > summary { margin-bottom: 4px; }
+
+[hidden] { display: none !important; }
