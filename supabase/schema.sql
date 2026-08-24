@@ -60,10 +60,13 @@ create table if not exists public.restrictions (
   room_id    uuid        not null references public.rooms(id) on delete cascade,
   user_id    uuid        not null references auth.users(id)   on delete cascade,
   food       text        not null,
-  -- allergy = アレルギー / dislike = 苦手・好み
-  kind       text        not null check (kind in ('allergy', 'dislike')),
-  -- 1 = 好んでは食べない / 2 = 食べられるが極力避けたい / 3 = 食べられない・苦手
-  -- 数字が大きいほど重い
+  -- にがて側: allergy = アレルギー / dislike = 苦手・好み
+  -- すき側  : like    = 好きなもの
+  -- 「にがて／すき」の切り替えはこの列だけで決まる。専用の列は増やさない。
+  kind       text        not null check (kind in ('allergy', 'dislike', 'like')),
+  -- 数字が大きいほど強い。意味は kind によって変わる。
+  --   にがて側: 1 = 好んでは食べない / 2 = 極力避けたい / 3 = 食べられない・苦手
+  --   すき側  : 1 = まあ好き         / 2 = 好き         / 3 = 大好き
   level      smallint    not null check (level between 1 and 3),
   -- ingredient = 食材（えび） / dish = 料理（エビチリ）
   category   text        not null default 'ingredient'
@@ -87,15 +90,18 @@ create table if not exists public.restrictions (
 -- ---------------------------------------------------------------------
 do $$
 begin
-  -- 区分: belief を dislike に移してから制約を張り替える
+  -- 区分: 廃止した belief を dislike に移してから制約を張り替える。
+  -- 'like'（好きなもの）は残すので、対象から除外している点に注意。
   if exists (
     select 1 from information_schema.columns
     where table_schema = 'public' and table_name = 'restrictions' and column_name = 'kind'
   ) then
     alter table public.restrictions drop constraint if exists restrictions_kind_check;
-    update public.restrictions set kind = 'dislike' where kind not in ('allergy', 'dislike');
+    update public.restrictions
+       set kind = 'dislike'
+     where kind not in ('allergy', 'dislike', 'like');
     alter table public.restrictions
-      add constraint restrictions_kind_check check (kind in ('allergy', 'dislike'));
+      add constraint restrictions_kind_check check (kind in ('allergy', 'dislike', 'like'));
   end if;
 
   -- レベル: text のままなら数値へ変換する（never=3 / avoid=2 / small_ok=1）

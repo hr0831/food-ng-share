@@ -36,6 +36,18 @@
   </button>
 </header>
 
+<!-- にがて／すき の切り替え。ui.js がモードに応じて配色ごと入れ替える -->
+<div class="modebar" id="modebar" hidden>
+  <div class="modebar__inner" role="group" aria-label="表示の切り替え">
+    <button type="button" class="modebtn" data-mode="avoid" aria-pressed="true">
+      <span data-icon="dislike" data-icon-size="17"></span>にがて
+    </button>
+    <button type="button" class="modebtn" data-mode="like" aria-pressed="false">
+      <span data-icon="like" data-icon-size="17"></span>すき
+    </button>
+  </div>
+</div>
+
 <p class="presence" id="presence" hidden></p>
 
 <main id="main">
@@ -164,7 +176,7 @@
     <!-- ---- タブ1: マイリスト ---- -->
     <div class="tabpanel" data-tab="mine">
       <form class="card" id="form-add" novalidate>
-        <h2>追加する</h2>
+        <h2 id="add-title">にがてを追加する</h2>
 
         <label class="field">
           <span class="field__label">名前</span>
@@ -177,7 +189,8 @@
           <div class="seg__row seg__row--2" id="add-category"></div>
         </fieldset>
 
-        <fieldset class="seg">
+        <!-- 区分は「にがて」のときだけ出す（すきに区分は無い） -->
+        <fieldset class="seg" id="add-kind-field">
           <legend class="field__label">
             区分 <span class="field__req">選んでください</span>
           </legend>
@@ -186,10 +199,11 @@
 
         <fieldset class="seg">
           <legend class="field__label">
-            レベル <span class="field__req">選んでください</span>
+            <span id="add-level-legend">レベル</span>
+            <span class="field__req">選んでください</span>
           </legend>
           <div class="seg__row" id="add-level"></div>
-          <p class="note" id="add-level-help">1 好んでは食べない ／ 2 食べられるが極力避けたい ／ 3 食べられない・苦手</p>
+          <p class="note" id="add-level-help"></p>
         </fieldset>
 
         <label class="field">
@@ -240,10 +254,10 @@
       <div class="card card--tight toolbar">
         <label class="switch">
           <input type="checkbox" id="filter-lv3">
-          <span>レベル3だけ表示</span>
+          <span id="filter-lv3-label">レベル3だけ表示</span>
         </label>
         <button type="button" class="btn btn--primary btn--sm" id="btn-open-share">
-          <span data-icon="share" data-icon-size="17"></span>お店に伝える
+          <span data-icon="share" data-icon-size="17"></span><span id="btn-open-share-label">お店に伝える</span>
         </button>
       </div>
       <div id="summary-list"></div>
@@ -297,12 +311,12 @@
       <legend class="field__label">分類</legend>
       <div class="seg__row seg__row--2" id="edit-category"></div>
     </fieldset>
-    <fieldset class="seg">
+    <fieldset class="seg" id="edit-kind-field">
       <legend class="field__label">区分</legend>
       <div class="seg__row seg__row--2" id="edit-kind"></div>
     </fieldset>
     <fieldset class="seg">
-      <legend class="field__label">レベル</legend>
+      <legend class="field__label" id="edit-level-legend">レベル</legend>
       <div class="seg__row" id="edit-level"></div>
     </fieldset>
     <label class="field">

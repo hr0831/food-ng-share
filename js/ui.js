@@ -47,7 +47,13 @@ const state = {
   profiles: new Map(),            // user_id -> profile
   restrictions: new Map(),        // id -> row（id をキーにするので冪等にマージできる）
   tab: "mine",
-  filterLv3: false,               // まとめ画面「レベル3だけ表示」
+  /*
+   * 表示モード。"avoid" = にがて（アレルギー・苦手）/ "like" = すき。
+   * 起動時は必ず "avoid" から始める。アレルギーの確認がこのアプリの主目的で、
+   * 前回すきモードだったからといって食べられないものが隠れた状態で開くのは避けたい。
+   */
+  mode: "avoid",
+  filterLv3: false,               // まとめ画面「レベル3／大好き だけ表示」
   presenceOthers: [],
   sync: null,                     // realtime のハンドル
 };
@@ -86,11 +92,13 @@ function showScreen(name) {
   $$(".screen").forEach((s) => (s.hidden = s.dataset.screen !== name));
   const inApp = name === "app";
   $("#tabbar").hidden = !inApp;
+  $("#modebar").hidden = !inApp;
   $("#btn-settings").hidden = !inApp;
   // 接続状態はルームを購読している間しか意味を持たないので、それ以外では隠す
   $("#conn").hidden = !inApp;
   if (!inApp) $("#presence").hidden = true;
   applyFooterHeight();          // タブバーの出し入れで高さが変わる
+  applyModebarOffset();
 }
 
 function showError(title, body) {
@@ -216,12 +224,16 @@ const CATEGORY_OPTIONS = [
   ["ingredient", "食材"],
   ["dish", "料理"],
 ];
-/** レベルは「数字＋短い説明」の縦積みで見せる（横幅375pxに収めるため短縮形） */
-const LEVEL_OPTIONS = [
-  ["1", "好まない"],
-  ["2", "極力避けたい"],
-  ["3", "食べられない"],
-];
+
+/**
+ * レベルの選択肢。「数字＋短い説明」の縦積みで見せる。
+ * 意味がモードで変わる（にがて=重さ／すき=好き度）ので data.js から引く。
+ */
+const levelOptions = (polarity) =>
+  [1, 2, 3].map((n) => [String(n), DB.LEVELS[polarity][n].seg]);
+
+/** そのモードで使う区分（すき側は like ひとつだけ） */
+const kindsOf = (polarity) => DB.POLARITIES[polarity].kinds;
 
 /**
  * ラジオボタンのセグメントを組み立てる。
@@ -277,15 +289,17 @@ function sortedItems(list) {
   return list.slice().sort((a, b) => {
     const k = DB.KINDS[a.kind].order - DB.KINDS[b.kind].order;
     if (k) return k;
-    const l = DB.LEVELS[a.level].order - DB.LEVELS[b.level].order;
+    const l = DB.levelInfo(a.kind, a.level).order - DB.levelInfo(b.kind, b.level).order;
     if (l) return l;
     return (a.created_at || "").localeCompare(b.created_at || "");
   });
 }
 
 const allItems = () => Array.from(state.restrictions.values());
-const myItems = () => allItems().filter((r) => r.user_id === myId());
-const partnerItems = () => allItems().filter((r) => r.user_id !== myId());
+/** いま表示しているモード（にがて／すき）の行だけ */
+const modeItems = () => allItems().filter((r) => DB.polarityOf(r.kind) === state.mode);
+const myItems = () => modeItems().filter((r) => r.user_id === myId());
+const partnerItems = () => modeItems().filter((r) => r.user_id !== myId());
 
 /* ================================================================== *
  * 描画
@@ -330,9 +344,10 @@ function renderItem(row, { showWho = false, editable = false }) {
 
   const meta = el("div", "item__meta");
 
-  // レベル: 数字を主、短い説明を従にする
+  // レベル: 数字を主、短い説明を従にする（意味はモードで変わる）
+  const lvInfo = DB.levelInfo(row.kind, row.level);
   const lv = el("span", `badge badge--lv${row.level}`);
-  lv.append(el("b", null, String(row.level)), el("span", null, DB.LEVELS[row.level].short));
+  lv.append(el("b", null, String(row.level)), el("span", null, lvInfo.short));
   meta.append(lv);
 
   // 分類（食材／料理）はバッジで添えるだけ
@@ -454,7 +469,7 @@ function attachSwipe(rowEl, itemEl, onDelete) {
  */
 function renderGroups(container, items, opts) {
   container.textContent = "";
-  const order = ["allergy", "dislike"];
+  const order = opts.kinds || kindsOf(state.mode);
   let rendered = 0;
 
   for (const kind of order) {
@@ -488,9 +503,12 @@ function renderGroups(container, items, opts) {
 }
 
 function renderMine() {
+  const like = state.mode === "like";
   renderGroups($("#mine-list"), myItems(), {
-    emptyIcon: "mine",
-    emptyText: "まだ登録がありません。\n上のフォームから、\n食べられないものを登録しましょう。",
+    emptyIcon: like ? "like" : "mine",
+    emptyText: like
+      ? "好きなものはまだありません。\n上のフォームから、\n好きな食べ物を登録しましょう。"
+      : "まだ登録がありません。\n上のフォームから、\n食べられないものを登録しましょう。",
   });
 }
 
@@ -510,16 +528,19 @@ function renderPartner() {
   const items = partnerItems();
   const latest = items.reduce((max, r) => (r.updated_at > max ? r.updated_at : max), "");
 
+  const like = state.mode === "like";
   listBox.textContent = "";
   const head = el("div", "card card--tight");
-  head.append(el("h2", null, `${nameOf(pid)}さんのリスト`));
+  head.append(el("h2", null, like ? `${nameOf(pid)}さんの好きなもの` : `${nameOf(pid)}さんのリスト`));
   head.append(el("p", "note", `最終更新: ${latest ? fmtDateTime(latest) : "―"}／読み取り専用です`));
   listBox.append(head);
 
   const groups = el("div");
   renderGroups(groups, items, {
-    emptyIcon: "partner",
-    emptyText: `${nameOf(pid)}さんはまだ登録していません。`,
+    emptyIcon: like ? "like" : "partner",
+    emptyText: like
+      ? `${nameOf(pid)}さんはまだ好きなものを登録していません。`
+      : `${nameOf(pid)}さんはまだ登録していません。`,
   });
   listBox.append(groups);
 }
@@ -546,12 +567,103 @@ function inviteUrl() {
 /* ---- まとめタブ -------------------------------------------------- */
 
 function summaryItems() {
-  let items = allItems();
+  let items = modeItems();
   if (state.filterLv3) items = items.filter((r) => Number(r.level) === 3);
   return sortedItems(items);
 }
 
+/**
+ * 「すき」のまとめを、ふたりの重なりで組み替える。
+ *   1) ふたりとも好き（名前が一致するもの）
+ *   2) 自分だけが好き
+ *   3) 相手だけが好き
+ * お店選びのとき「どこなら2人とも嬉しいか」が最初に目に入るようにするため。
+ */
+function groupLikes(items) {
+  const mine = items.filter((r) => r.user_id === myId());
+  const theirs = items.filter((r) => r.user_id !== myId());
+  const theirKeys = new Set(theirs.map((r) => normalizeFood(r.food)));
+  const myKeys = new Set(mine.map((r) => normalizeFood(r.food)));
+
+  const both = [];
+  const seen = new Set();
+  for (const r of mine) {
+    const k = normalizeFood(r.food);
+    if (theirKeys.has(k) && !seen.has(k)) {
+      seen.add(k);
+      /*
+       * 好き度は2人のうち「低い方」を代表値にする。
+       * 高い方にすると、片方が「まあ好き」でも「大好き」と表示されて実態より強く見える。
+       * 低い方なら「ふたりとも少なくともこのくらいは好き」という読み方になり、
+       * 並び順としても「2人とも大好きなもの」が自然に上に来る。
+       */
+      const partner = theirs.find((x) => normalizeFood(x.food) === k);
+      both.push({ ...r, level: Math.min(Number(r.level), Number(partner.level)) });
+    }
+  }
+  return {
+    both,
+    mine: mine.filter((r) => !theirKeys.has(normalizeFood(r.food))),
+    theirs: theirs.filter((r) => !myKeys.has(normalizeFood(r.food))),
+  };
+}
+
+/**
+ * すきモードのまとめ用グループ。
+ *
+ * 絞り込みは「組にしたあと」に掛ける。先に絞ってしまうと、
+ * 片方だけが大好きな品が「ふたりとも好き」から外れて
+ * 「その人だけが好き」に移ってしまい、事実と違う表示になる。
+ */
+function likeGroups() {
+  const g = groupLikes(modeItems());
+  if (!state.filterLv3) return g;
+  const keep = (list) => list.filter((r) => Number(r.level) === 3);
+  return { both: keep(g.both), mine: keep(g.mine), theirs: keep(g.theirs) };
+}
+
+/** すきモードのまとめ描画（区分が1つしかないので独自に組む） */
+function renderLikeSummary(container) {
+  container.textContent = "";
+  const g = likeGroups();
+  const pid = partnerId();
+
+  const section = (titleText, iconName, list, opts = {}) => {
+    if (!list.length) return;
+    const wrap = el("section", `group group--${opts.cls || "like"}`);
+    const head = el("div", "group__head");
+    head.append(icon(iconName, { size: 17 }));
+    head.append(el("h2", "group__title", titleText));
+    head.append(el("span", "group__count", `${list.length}件`));
+    wrap.append(head);
+    const box = el("div", "items");
+    for (const row of sortedItems(list)) box.append(renderRow(row, { showWho: false }));
+    wrap.append(box);
+    container.append(wrap);
+  };
+
+  section("ふたりとも好き", "bothLike", g.both, { cls: "both" });
+  section(`${nameOf(myId())}さんが好き`, "like", g.mine);
+  if (pid) section(`${nameOf(pid)}さんが好き`, "like", g.theirs);
+
+  if (!g.both.length && !g.mine.length && !g.theirs.length) {
+    const empty = el("div", "empty");
+    const ic = el("span", "empty__ic");
+    ic.append(icon("like", { size: 34 }));
+    empty.append(ic);
+    const msg = state.filterLv3
+      ? "「大好き」の登録はありません。"
+      : "2人ともまだ好きなものを登録していません。";
+    empty.append(el("div", null, msg));
+    container.append(empty);
+  }
+}
+
 function renderSummary() {
+  if (state.mode === "like") {
+    renderLikeSummary($("#summary-list"));
+    return;
+  }
   const items = summaryItems();
   renderGroups($("#summary-list"), items, {
     showWho: true,
@@ -570,10 +682,11 @@ function renderSummary() {
  * モーダルは最前面に出るため、閉じないと完了トーストが背後に隠れてしまうから。
  */
 async function openShareDialog() {
-  const items = summaryItems();
-  $("#share-text").textContent = buildShareText(items);
+  const like = state.mode === "like";
+  $("#dlg-share h2").textContent = like ? "好きなものを共有" : "お店に伝える";
+  $("#share-text").textContent = buildShareText();
   $("#share-scope").textContent = state.filterLv3
-    ? "「レベル3（食べられない）だけ」で絞り込んだ内容です。"
+    ? `「${like ? "大好き" : "レベル3（食べられない）"}だけ」で絞り込んだ内容です。`
     : "登録されているものを、すべて載せています。";
 
   const result = await openDialog($("#dlg-share"), [
@@ -596,15 +709,37 @@ async function openShareDialog() {
  * 全項目に注釈を付けると長くなり、肝心の名前が埋もれるため。
  */
 function itemText(r) {
+  /*
+   * すき側は「どれが好きか」が伝わればよいので、名前とメモだけにする。
+   * にがて側と同じ密度で注釈を付けると、ほとんどが「大好き」になって
+   * かえって読みにくくなるため。
+   */
+  if (r.kind === "like") {
+    return r.food + (r.note ? `（${r.note}）` : "");
+  }
   const bits = [];
   if (r.category === "dish") bits.push("料理");
-  if (r.kind === "allergy" && Number(r.level) < 3) bits.push(DB.LEVELS[r.level].short);
+  if (r.kind === "allergy" && Number(r.level) < 3) bits.push(DB.levelInfo(r.kind, r.level).short);
   if (r.kind === "dislike" && Number(r.level) === 3) bits.push("食べられない");
   if (r.note) bits.push(r.note);
   return r.food + (bits.length ? `（${bits.join("・")}）` : "");
 }
 
-function buildShareText(items) {
+function buildShareText() {
+  // すき側は「ふたりとも好き」を先頭に出す（お店選びに一番効く情報のため）
+  if (state.mode === "like") {
+    const g = likeGroups();
+    const pid = partnerId();
+    const lines = [];
+    // 画面と同じ「好き度の高い順」で並べる
+    const list = (arr) => sortedItems(arr).map(itemText).join("・");
+    if (g.both.length) lines.push(`ふたりとも好き: ${list(g.both)}`);
+    if (g.mine.length) lines.push(`${nameOf(myId())}が好き: ${list(g.mine)}`);
+    if (pid && g.theirs.length) lines.push(`${nameOf(pid)}が好き: ${list(g.theirs)}`);
+    return lines.length ? lines.join("\n") : "（登録がありません）";
+  }
+
+  const items = summaryItems();
   if (!items.length) return "（登録がありません）";
   const lines = [];
   for (const kind of ["allergy", "dislike"]) {
@@ -625,6 +760,40 @@ function renderAll() {
   renderPartner();
   renderSummary();
   renderPresence();
+}
+
+/**
+ * にがて／すき の切り替え。
+ * 配色は <html data-mode> を見て CSS 側がまるごと入れ替える。
+ * ブラウザのUI（アドレスバー等）の色も追随させるため theme-color も差し替える。
+ */
+function setMode(mode) {
+  if (!DB.POLARITIES[mode]) return;
+  state.mode = mode;
+  document.documentElement.dataset.mode = mode;
+
+  $$("[data-mode]", $("#modebar")).forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.mode === mode))
+  );
+
+  // ブラウザのテーマ色（実際の背景色をそのまま渡す）
+  const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+  $$('meta[name="theme-color"]').forEach((m) => m.setAttribute("content", bg));
+
+  // モードで意味が変わる文言
+  const like = mode === "like";
+  $("#filter-lv3-label").textContent = like ? "「大好き」だけ表示" : "レベル3だけ表示";
+  $("#btn-open-share-label").textContent = like ? "共有する" : "お店に伝える";
+
+  resetAddForm();
+  renderAll();
+}
+
+/** モード切替バーが appbar の真下に貼り付くよう、実測した高さを top に入れる */
+function applyModebarOffset() {
+  const bar = $("#modebar");
+  const appbar = $(".appbar");
+  if (bar && appbar) bar.style.top = `${appbar.offsetHeight}px`;
 }
 
 function switchTab(tab) {
@@ -653,14 +822,26 @@ async function addItem({ food, kind, level, category, note = "" }) {
   }
   if (!state.room) return false;
 
-  // 同じ食材の重複を検知して確認する
-  const dup = myItems().find((r) => normalizeFood(r.food) === normalizeFood(name));
+  /*
+   * 重複の検知は「にがて／すき」をまたいで行う。
+   * 同じものを両方に入れてしまうと、相手から見たときにどちらを信じるべきか
+   * 分からなくなるため、特に反対側に既にある場合ははっきり伝える。
+   */
+  const dup = allItems()
+    .filter((r) => r.user_id === myId())
+    .find((r) => normalizeFood(r.food) === normalizeFood(name));
   if (dup) {
+    const dupPolarity = DB.polarityOf(dup.kind);
+    const opposite = dupPolarity !== DB.polarityOf(kind);
+    const where = DB.POLARITIES[dupPolarity].label;
+    const lv = DB.levelInfo(dup.kind, dup.level).label;
     const ok = await confirmDialog({
-      title: "すでに登録されています",
-      body: `「${dup.food}」は ${DB.KINDS[dup.kind].label}／レベル${dup.level} として登録済みです。\nもう一度追加しますか？`,
+      title: opposite ? "反対側に登録されています" : "すでに登録されています",
+      body: opposite
+        ? `「${dup.food}」は「${where}」に ${lv} として登録済みです。\n両方に入れると、相手からどちらか分からなくなります。\nこのまま追加しますか？`
+        : `「${dup.food}」は ${DB.KINDS[dup.kind].label}／${lv} として登録済みです。\nもう一度追加しますか？`,
       okLabel: "追加する",
-      danger: false,
+      danger: opposite,
     });
     if (!ok) return false;
   }
@@ -749,13 +930,18 @@ async function undoDelete(row) {
 /* ---- 編集ダイアログ ---------------------------------------------- */
 
 async function openEdit(row) {
+  const polarity = DB.polarityOf(row.kind);
   $("#edit-food").value = row.food;
   $("#edit-note").value = row.note || "";
+  $("#edit-level-legend").textContent = DB.POLARITIES[polarity].levelLabel;
+  // すき側に区分は無いので隠す（にがて⇄すき の付け替えは編集では行わない）
+  $("#edit-kind-field").hidden = polarity === "like";
+
   buildSeg($("#edit-category"), "edit-category", CATEGORY_OPTIONS, row.category || "ingredient",
     { withIcon: (v) => DB.CATEGORIES[v].icon });
   buildSeg($("#edit-kind"), "edit-kind", KIND_OPTIONS, row.kind,
     { withIcon: (v) => DB.KINDS[v].icon });
-  buildSeg($("#edit-level"), "edit-level", LEVEL_OPTIONS, String(row.level), { stacked: true });
+  buildSeg($("#edit-level"), "edit-level", levelOptions(polarity), String(row.level), { stacked: true });
 
   const result = await openDialog($("#dlg-edit"), [
     { el: $("#edit-cancel"), value: "cancel" },
@@ -1087,7 +1273,7 @@ async function enterRoom() {
   startSync();
   showScreen("app");
   switchTab(state.tab);
-  renderAll();
+  setMode(state.mode);         // 配色・文言・フォームをモードに合わせて初期化（内部で描画まで行う）
 }
 
 /* ================================================================== *
@@ -1154,22 +1340,38 @@ function toLoggedOut() {
  * 追加フォーム
  * ================================================================== */
 
-/** 区分とレベルは必須。両方選ぶまで追加ボタンを押せないようにする。 */
+/**
+ * 追加ボタンの活性判定。
+ * にがて側は「区分＋レベル」、すき側は区分が無いので「好き度」だけが必須。
+ */
 function refreshAddButton() {
-  markSegFilled($("#add-kind"));
+  const needKind = state.mode === "avoid";
+  if (needKind) markSegFilled($("#add-kind"));
   markSegFilled($("#add-level"));
-  $("#btn-add").disabled = !(segValue($("#add-kind")) && segValue($("#add-level")));
+  const kindOk = !needKind || Boolean(segValue($("#add-kind")));
+  $("#btn-add").disabled = !(kindOk && segValue($("#add-level")));
 }
 
 /** フォームを初期状態（区分・レベルは未選択、分類は食材）に戻す */
 function resetAddForm() {
+  const like = state.mode === "like";
   $("#add-food").value = "";
   $("#add-note").value = "";
+  $("#add-food").placeholder = like ? "例: ハンバーグ／いちご" : "例: えび／エビチリ";
+  $("#add-title").textContent = like ? "好きなものを追加する" : "にがてを追加する";
+  $("#add-level-legend").textContent = DB.POLARITIES[state.mode].levelLabel;
+  $("#add-level-help").textContent = like
+    ? "1 まあ好き ／ 2 好き ／ 3 大好き"
+    : "1 好んでは食べない ／ 2 食べられるが極力避けたい ／ 3 食べられない・苦手";
+
+  // すきモードに区分は無いので、まるごと隠す
+  $("#add-kind-field").hidden = like;
+
   buildSeg($("#add-category"), "add-category", CATEGORY_OPTIONS, "ingredient",
     { withIcon: (v) => DB.CATEGORIES[v].icon });
   buildSeg($("#add-kind"), "add-kind", KIND_OPTIONS, null,
     { withIcon: (v) => DB.KINDS[v].icon });
-  buildSeg($("#add-level"), "add-level", LEVEL_OPTIONS, null, { stacked: true });
+  buildSeg($("#add-level"), "add-level", levelOptions(state.mode), null, { stacked: true });
   refreshAddButton();
 }
 
@@ -1185,6 +1387,15 @@ function wireEvents() {
     b.addEventListener("click", () => switchTab(b.dataset.tabbtn))
   );
 
+  // --- にがて／すき の切り替え ---
+  $$("[data-mode]", $("#modebar")).forEach((b) =>
+    b.addEventListener("click", () => {
+      if (state.mode === b.dataset.mode) return;
+      setMode(b.dataset.mode);
+      window.scrollTo({ top: 0 });
+    })
+  );
+
   // --- 追加フォーム ---
   resetAddForm();
   guardIme($("#add-food"), () => $("#form-add").requestSubmit());
@@ -1196,7 +1407,8 @@ function wireEvents() {
     e.preventDefault();
     const ok = await addItem({
       food: $("#add-food").value,
-      kind: segValue($("#add-kind")),
+      // すきモードに区分の選択肢は無いので固定
+      kind: state.mode === "like" ? "like" : segValue($("#add-kind")),
       level: segValue($("#add-level")),
       category: segValue($("#add-category")) || "ingredient",
       note: $("#add-note").value,
@@ -1308,11 +1520,15 @@ function wireEvents() {
   $("#btn-retry").addEventListener("click", () => boot());
 
   // --- フッターの実高さを CSS 変数へ反映（注記が2行/3行になっても被らない） ---
-  applyFooterHeight();
-  window.addEventListener("resize", applyFooterHeight);
-  window.addEventListener("orientationchange", () => setTimeout(applyFooterHeight, 200));
+  const remeasure = () => { applyFooterHeight(); applyModebarOffset(); };
+  remeasure();
+  window.addEventListener("resize", remeasure);
+  window.addEventListener("orientationchange", () => setTimeout(remeasure, 200));
   // フォント読み込みやアドレスバーの伸縮でも高さが変わるので、保険として監視も張る
-  if (window.ResizeObserver) new ResizeObserver(applyFooterHeight).observe($(".footerbar"));
+  if (window.ResizeObserver) {
+    new ResizeObserver(remeasure).observe($(".footerbar"));
+    new ResizeObserver(applyModebarOffset).observe($(".appbar"));
+  }
 }
 
 /* ================================================================== *

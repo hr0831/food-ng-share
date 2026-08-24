@@ -9,21 +9,50 @@ import { supabase, probeProject } from "./supabase.js";
  * 定数（UI と共有するラベル）
  * ------------------------------------------------------------------ */
 
-/** 区分。アレルギーと苦手の2軸だけにしている（宗教・信条は廃止） */
+/**
+ * 区分。
+ *
+ * 「にがて」と「すき」は専用の列を作らず、この kind だけで表している。
+ * 列を増やすと kind と整合を取る制約が必要になり、移行も面倒になるため。
+ *   にがて側 = allergy / dislike
+ *   すき側   = like
+ */
 export const KINDS = {
-  allergy: { label: "アレルギー", short: "アレルギー", icon: "allergy", order: 0 },
-  dislike: { label: "苦手・好み", short: "苦手", icon: "dislike", order: 1 },
+  allergy: { label: "アレルギー", short: "アレルギー", icon: "allergy", order: 0, polarity: "avoid" },
+  dislike: { label: "苦手・好み", short: "苦手", icon: "dislike", order: 1, polarity: "avoid" },
+  like: { label: "好きなもの", short: "好き", icon: "like", order: 0, polarity: "like" },
+};
+
+/** 画面のモード（上部の切り替え）。 */
+export const POLARITIES = {
+  avoid: { label: "にがて", kinds: ["allergy", "dislike"], levelLabel: "レベル" },
+  like: { label: "すき", kinds: ["like"], levelLabel: "好き度" },
 };
 
 /**
- * レベル。数値が大きいほど重い。
- * order は「重い順に並べる」ための順位なので、3 が先頭に来るよう逆順にしてある。
+ * レベル。数値が大きいほど強い。意味はモードによって変わる。
+ * order は「強い順に並べる」ための順位なので、3 が先頭に来るよう逆順にしてある。
+ * seg は選択肢に出す短縮形（375px の3分割に収める必要がある）。
  */
 export const LEVELS = {
-  3: { label: "食べられない・苦手", short: "食べられない", order: 0 },
-  2: { label: "食べられるが極力避けたい", short: "極力避けたい", order: 1 },
-  1: { label: "好んでは食べない", short: "好まない", order: 2 },
+  avoid: {
+    3: { label: "食べられない・苦手", short: "食べられない", seg: "食べられない", order: 0 },
+    2: { label: "食べられるが極力避けたい", short: "極力避けたい", seg: "極力避けたい", order: 1 },
+    1: { label: "好んでは食べない", short: "好まない", seg: "好まない", order: 2 },
+  },
+  like: {
+    3: { label: "大好き", short: "大好き", seg: "大好き", order: 0 },
+    2: { label: "好き", short: "好き", seg: "好き", order: 1 },
+    1: { label: "まあ好き", short: "まあ好き", seg: "まあ好き", order: 2 },
+  },
 };
+
+/** その区分が「にがて」側か「すき」側か */
+export const polarityOf = (kind) => KINDS[kind]?.polarity || "avoid";
+
+/** 行のレベル情報を、区分に応じた意味で引く */
+export const levelInfo = (kind, level) =>
+  LEVELS[polarityOf(kind)][level] || LEVELS.avoid[2];
 
 /** 分類。「えび」のような食材と「エビチリ」のような料理を区別する */
 export const CATEGORIES = {
