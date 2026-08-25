@@ -26,6 +26,19 @@ export const SUPABASE_URL = "https://habksqmojofyceswcrkm.supabase.co";
 
 export const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_5dzFkfMvb1Eplrsuo6-d-w_PzDXt0dd";
 
+/*
+ * プッシュ通知用の公開カギ（VAPID public key）。
+ *
+ * tools/vapid.html をブラウザで開いて「カギを作る」で生成し、
+ * 出てきた①の値をここに貼ります。公開されて構わない種類のカギです。
+ *
+ * 空のままなら、通知の機能そのものが画面に出ません（他の機能は普通に動きます）。
+ *
+ * ★対になる「秘密のカギ」は、Supabase の Edge Functions シークレットにだけ
+ *   登録してください。ここや GitHub には絶対に書かないこと。
+ */
+export const VAPID_PUBLIC_KEY = "";
+
 /** 設定がプレースホルダのままかどうか（未設定の案内を出すために使う） */
 export const IS_CONFIGURED =
   !SUPABASE_URL.includes("YOUR-PROJECT-REF") &&

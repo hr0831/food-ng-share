@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+<title>通知用のカギを作る｜ふたりごはん</title>
+<style>
+  :root {
+    --bg:#F1F8F6; --surface:#fff; --border:#D9E8E3; --text:#16211E;
+    --muted:#62726E; --accent:#2E9E8B; --danger:#C0392B; --danger-soft:#FBE9E7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0F1614; --surface:#16211E; --border:#27332F; --text:#E9F2EF;
+            --muted:#93A5A0; --accent:#4CC6AF; --danger:#F08A7E; --danger-soft:#3A1F1C; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-size:16px; line-height:1.7;
+         font-family:-apple-system,"Hiragino Sans","Yu Gothic UI","Segoe UI",sans-serif; }
+  main { max-width:640px; margin:0 auto; padding:20px 16px 48px; }
+  h1 { font-size:1.125rem; margin:0 0 4px; }
+  h2 { font-size:.9375rem; margin:0; }
+  p { margin:0; }
+  .muted { color:var(--muted); font-size:.875rem; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:12px;
+          padding:16px; margin-top:14px; display:flex; flex-direction:column; gap:10px; }
+  .warn { border-color:color-mix(in srgb,var(--danger) 40%,var(--border)); background:var(--danger-soft); }
+  .warn h2 { color:var(--danger); }
+  button { font:inherit; font-weight:700; min-height:44px; padding:10px 16px; cursor:pointer;
+           border-radius:10px; border:1px solid var(--border); background:var(--surface); color:var(--text); }
+  .primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .val { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.8125rem;
+         word-break:break-all; background:var(--bg); border:1px solid var(--border);
+         border-radius:10px; padding:10px; user-select:all; min-height:44px; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .row > button { flex:0 0 auto; }
+  label { font-size:.75rem; font-weight:700; color:var(--muted); }
+  ol { padding-left:1.3em; margin:0; }
+  li { margin-bottom:6px; }
+  code { font-family:ui-monospace,Menlo,monospace; font-size:.85em;
+         background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:1px 5px; }
+  #out[hidden] { display:none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>通知用のカギを作る</h1>
+  <p class="muted">
+    プッシュ通知に必要な鍵を作ります。鍵は<strong>このページの中（あなたの端末）だけ</strong>で作られ、
+    どこにも送信されません。
+  </p>
+
+  <div class="card">
+    <button class="primary" id="gen">カギを作る</button>
+    <p class="muted">押すたびに新しい鍵ができます。設定し終わるまでこのページを閉じないでください。</p>
+  </div>
+
+  <div id="out" hidden>
+    <div class="card">
+      <h2>① 公開カギ（VAPID public key）</h2>
+      <p class="muted">アプリの <code>config.js</code> に書きます。公開されて構いません。</p>
+      <div class="val" id="pub"></div>
+      <div class="row"><button data-copy="pub">コピー</button></div>
+    </div>
+
+    <div class="card warn">
+      <h2>② 秘密のカギ（VAPID private key）</h2>
+      <p class="muted">
+        Supabase の <strong>Edge Functions のシークレット</strong>にだけ貼ります。<br>
+        <strong>config.js や GitHub には絶対に書かないでください。</strong>他人に通知を送られてしまいます。
+      </p>
+      <div class="val" id="priv"></div>
+      <div class="row"><button data-copy="priv">コピー</button></div>
+    </div>
+
+    <div class="card warn">
+      <h2>③ 合言葉（Webhook secret）</h2>
+      <p class="muted">
+        通知の呼び出しが本物かを確かめるための合言葉です。<br>
+        Supabase の<strong>シークレットと Webhook の設定の両方</strong>に貼ります。これも公開しないでください。
+      </p>
+      <div class="val" id="secret"></div>
+      <div class="row"><button data-copy="secret">コピー</button></div>
+    </div>
+
+    <div class="card">
+      <h2>この3つをどこに入れるか</h2>
+      <ol>
+        <li>① → アプリの <code>config.js</code></li>
+        <li>② → Supabase の Edge Functions シークレット <code>VAPID_PRIVATE_KEY</code></li>
+        <li>③ → Supabase の Edge Functions シークレット <code>WEBHOOK_SECRET</code> と、Database Webhook のヘッダー</li>
+      </ol>
+      <p class="muted">
+        ①には、あわせて連絡先メールも必要です（通知サーバからの連絡用）。詳しい手順は README を見てください。
+      </p>
+    </div>
+  </div>
+</main>
+
+<script>
+const b64url = (bytes) =>
+  btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+document.getElementById("gen").addEventListener("click", async () => {
+  try {
+    // Web Push の VAPID は P-256 の鍵ペア。公開鍵は非圧縮形式(65バイト)で渡す決まり。
+    const kp = await crypto.subtle.generateKey(
+      { name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]
+    );
+    const rawPub = new Uint8Array(await crypto.subtle.exportKey("raw", kp.publicKey));
+    const jwk = await crypto.subtle.exportKey("jwk", kp.privateKey);
+
+    if (rawPub.length !== 65 || rawPub[0] !== 4) throw new Error("公開鍵の形式が想定と違います");
+    if (!jwk.d) throw new Error("秘密鍵を取り出せませんでした");
+
+    const secretBytes = crypto.getRandomValues(new Uint8Array(32));
+
+    document.getElementById("pub").textContent = b64url(rawPub);
+    document.getElementById("priv").textContent = jwk.d;      // 既に base64url
+    document.getElementById("secret").textContent = b64url(secretBytes);
+    document.getElementById("out").hidden = false;
+    document.getElementById("out").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (e) {
+    alert("鍵を作れませんでした: " + e.message +
+          "\n\nhttps:// で開いていない場合、暗号機能が使えません。公開URLから開いてください。");
+  }
+});
+
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-copy]");
+  if (!btn) return;
+  const text = document.getElementById(btn.dataset.copy).textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    const old = btn.textContent;
+    btn.textContent = "コピーしました";
+    setTimeout(() => (btn.textContent = old), 1500);
+  } catch {
+    alert("コピーできませんでした。文字を長押しして選択してコピーしてください。");
+  }
+});
+</script>
+</body>
+</html>

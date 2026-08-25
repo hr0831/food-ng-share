@@ -7,6 +7,7 @@ import * as Auth from "./auth.js";
 import * as DB from "./data.js";
 import { subscribeRoom } from "./realtime.js";
 import { icon, mountIcons } from "./icons.js";
+import * as Push from "./push.js";
 
 /* ================================================================== *
  * 小さなヘルパー
@@ -1274,6 +1275,16 @@ async function enterRoom() {
   showScreen("app");
   switchTab(state.tab);
   setMode(state.mode);         // 配色・文言・フォームをモードに合わせて初期化（内部で描画まで行う）
+
+  /*
+   * 通知まわりの後始末。
+   * ・アプリを開いた＝既読とみなしてアイコンのバッジを消す
+   * ・既に許可済みなら購読を入れ直す（端末側で失効していることがあるため）
+   */
+  Push.clearBadge();
+  if (Push.pushSupported() && Push.permission() === "granted") {
+    Push.enablePush(myId(), state.room.id).catch(() => {});
+  }
 }
 
 /* ================================================================== *
@@ -1373,6 +1384,90 @@ function resetAddForm() {
     { withIcon: (v) => DB.KINDS[v].icon });
   buildSeg($("#add-level"), "add-level", levelOptions(state.mode), null, { stacked: true });
   refreshAddButton();
+}
+
+/* ================================================================== *
+ * プッシュ通知
+ * ================================================================== */
+
+/**
+ * 通知セクションの状態表示を更新する。
+ * スマホでは開発者ツールが使えないので、「使えない理由」まで必ず画面に出す。
+ */
+async function refreshPushUi() {
+  const box = $("#settings-push");
+  const reason = Push.unsupportedReason();
+
+  // カギ未設定なら機能ごと隠す（設定していない人に見せても混乱するだけ）
+  if (!Push.pushSupported() && reason?.includes("VAPID_PUBLIC_KEY")) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+
+  const setBtns = ({ on = false, test = false, off = false }) => {
+    $("#btn-push-on").hidden = !on;
+    $("#btn-push-test").hidden = !test;
+    $("#btn-push-off").hidden = !off;
+  };
+
+  if (reason) {
+    $("#push-state").textContent = "使えません";
+    $("#push-note").textContent = reason;
+    setBtns({});
+    return;
+  }
+  if (Push.permission() === "denied") {
+    $("#push-state").textContent = "ブロック中";
+    $("#push-note").textContent =
+      "端末の「設定 ＞ 通知」からこのアプリの通知を許可すると使えるようになります。";
+    setBtns({});
+    return;
+  }
+
+  const enabled = await Push.isEnabled();
+  $("#push-state").textContent = enabled ? "オン" : "オフ";
+  $("#push-note").textContent = enabled
+    ? "相手が項目を追加・削除したときに通知が届きます。レベルやメモの変更では通知しません。"
+    : "オンにすると、相手が項目を追加・削除したときに通知が届きます。";
+  setBtns({ on: !enabled, test: enabled, off: enabled });
+}
+
+function wirePush() {
+  // 通知の許可ダイアログは「タップの流れの中」でしか出せないので、
+  // click ハンドラから直接 enablePush を呼ぶ（間に await を挟まない）
+  $("#btn-push-on").addEventListener("click", async () => {
+    const btn = $("#btn-push-on");
+    btn.disabled = true;
+    const res = await Push.enablePush(myId(), state.room?.id);
+    btn.disabled = false;
+    if (res.ok) toast("通知をオンにしました");
+    else toast(res.message, { error: true, duration: 9000 });
+    refreshPushUi();
+  });
+
+  $("#btn-push-off").addEventListener("click", async () => {
+    await Push.disablePush();
+    toast("通知をオフにしました");
+    refreshPushUi();
+  });
+
+  $("#btn-push-test").addEventListener("click", async () => {
+    const btn = $("#btn-push-test");
+    btn.disabled = true;
+    toast("テスト通知を送っています…");
+    const res = await Push.sendTestPush();
+    btn.disabled = false;
+    toast(res.ok ? "送信しました。数秒待って通知を確認してください。" : res.message,
+      { error: !res.ok, duration: 9000 });
+  });
+
+  // Service Worker から「購読を取り直して」と言われたときの受け口
+  navigator.serviceWorker?.addEventListener?.("message", (e) => {
+    if (e.data?.type === "resubscribe-push" && state.user && state.room) {
+      Push.enablePush(myId(), state.room.id);
+    }
+  });
 }
 
 /* ================================================================== *
@@ -1487,10 +1582,14 @@ function wireEvents() {
   guardIme($("#edit-note"));
   guardIme($("#settings-name"));
 
+  // --- 通知 ---
+  wirePush();
+
   // --- 設定ダイアログ ---
   $("#btn-settings").addEventListener("click", async () => {
     $("#settings-name").value = state.profiles.get(myId())?.display_name || "";
     $("#settings-account").textContent = `ログイン中: ${state.user?.email || ""}`;
+    refreshPushUi();
 
     const result = await openDialog($("#dlg-settings"), [
       { el: $("#settings-close"), value: "cancel" },

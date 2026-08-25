@@ -251,6 +251,87 @@ Supabase の既定のメール本文にはリンクしか入っていないの�
 
 ---
 
+## 4-5. プッシュ通知を設定する（任意）
+
+相手が項目を**追加・削除**したときに、スマホへ通知を飛ばせます。
+レベルやメモの微修正では通知しません。
+
+**設定しなくてもアプリは普通に動きます。** 空のままなら通知の欄自体が表示されません。
+
+> **iPhone / iPad では、ホーム画面に追加したアイコンから開いたときだけ**通知を使えます
+> （[手順4-3](#4-3--ホーム画面に追加して使う場合重要)）。Safari のタブからでは使えません。
+
+### 4-5-1. カギを作る
+
+公開URLに置いてある **`tools/vapid.html`** をブラウザで開き、「カギを作る」を押します。
+
+```
+https://ユーザー名.github.io/リポジトリ名/tools/vapid.html
+```
+
+3つの値が出ます。**カギはこのページの中だけで作られ、どこにも送信されません。**
+設定し終わるまでページを閉じないでください。
+
+| | 何に使うか | 公開してよいか |
+|---|---|---|
+| ① 公開カギ | `config.js` に書く | ✅ 公開してよい |
+| ② 秘密のカギ | Supabase のシークレット | ❌ **絶対に公開しない** |
+| ③ 合言葉 | Supabase のシークレットと Webhook | ❌ 公開しない |
+
+### 4-5-2. config.js に①を書く
+
+```js
+export const VAPID_PUBLIC_KEY = "①の値";
+```
+
+### 4-5-3. Edge Function を作る
+
+**Edge Functions** → **Deploy a new function** → **Via Editor** を選びます。
+PCへのソフト導入は不要で、ブラウザだけで完結します。
+
+1. 名前を **`notify-partner`** にする（この名前でないとアプリから呼べません）
+2. このリポジトリの [`supabase/functions/notify-partner/index.ts`](supabase/functions/notify-partner/index.ts) の中身を全部貼り付ける
+3. **Deploy** を押す
+
+### 4-5-4. シークレットを登録する
+
+**Edge Functions** → **Secrets** で、次の4つを追加します。
+
+| 名前 | 値 |
+|---|---|
+| `VAPID_PUBLIC_KEY` | ①の値 |
+| `VAPID_PRIVATE_KEY` | **②の値** |
+| `VAPID_SUBJECT` | `mailto:あなたのメールアドレス` |
+| `WEBHOOK_SECRET` | ③の値 |
+
+> `SUPABASE_URL` と `SUPABASE_SERVICE_ROLE_KEY` は Supabase が自動で入れるので、登録不要です。
+> service_role キーはこの関数の中（サーバ側）でしか使いません。**フロントには絶対に出しません。**
+
+### 4-5-5. Webhook を作る
+
+**Database** → **Webhooks** → **Create a new hook**
+
+| 項目 | 値 |
+|---|---|
+| Name | `notify-partner` |
+| Table | `restrictions` |
+| Events | **Insert** と **Delete** にチェック（Update は外す） |
+| Type | **Supabase Edge Functions** |
+| Edge Function | `notify-partner` |
+| HTTP Headers | `x-webhook-secret` に **③の値** |
+
+### 4-5-6. 動作を確かめる
+
+1. ホーム画面のアイコンからアプリを開く
+2. 右上の **⚙（設定）** を開く
+3. 「相手の更新を通知」の **通知をオンにする** を押し、許可する
+4. **テスト通知** を押す → 数秒で通知が届けば成功
+
+> **届かないとき**は、設定欄に理由が日本語で出ます。
+> それでも分からない場合は、**Edge Functions → Logs** に送信結果が残っています。
+
+---
+
 ## 5. config.js に接続情報を書く
 
 1. 左サイドバー **Project Settings**（⚙）→ **API Keys** を開きます。
@@ -501,18 +582,26 @@ Supabase の無料プロジェクトは、**1週間アクセスが無いと自�
 food-ng-share/
 ├── index.html                  画面の構造
 ├── style.css                   スタイル（CSS変数・ダークモード対応）
-├── config.js                   SUPABASE_URL / PUBLISHABLE_KEY（コミットしてよい）
+├── config.js                   SUPABASE_URL / PUBLISHABLE_KEY / VAPID公開カギ（コミットしてよい）
+├── manifest.webmanifest        ホーム画面に追加したときのアプリ情報
+├── sw.js                       通知の受け取り（キャッシュはしない）
+├── icons/                      アプリのアイコン
+├── tools/
+│   └── vapid.html              通知用のカギを作るページ（端末内で完結）
 ├── js/
 │   ├── supabase.js             クライアント初期化・休止検知
 │   ├── auth.js                 マジックリンク／OTP・クールダウン
 │   ├── data.js                 DB操作はすべてここに集約
 │   ├── realtime.js             購読・プレゼンス・再接続
 │   ├── icons.js                アイコン（インラインSVG）
+│   ├── push.js                 プッシュ通知の購読管理
 │   └── ui.js                   画面描画とイベント（エントリポイント）
 ├── vendor/
 │   ├── supabase-js.js          同梱した supabase-js v2.58.0 の入口
 │   └── esm/                    依存パッケージ（相対 import に書き換え済み）
 ├── supabase/
+│   ├── functions/
+│   │   └── notify-partner/     通知を送る Edge Function（ダッシュボードに貼る）
 │   ├── schema.sql              テーブル・RLS・関数の定義＋移行（これ1本で完結）
 │   ├── verify_rls.sql          RLS の検証スクリプト
 │   └── diagnose_grants.sql     権限まわりの診断スクリプト（不具合時のみ使用）

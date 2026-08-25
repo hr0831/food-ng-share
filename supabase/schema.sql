@@ -132,6 +132,19 @@ begin
 end;
 $$;
 
+-- プッシュ通知の宛先（端末ごとに1行）
+create table if not exists public.push_subscriptions (
+  id         uuid        primary key default gen_random_uuid(),
+  user_id    uuid        not null references auth.users(id) on delete cascade,
+  room_id    uuid        not null references public.rooms(id) on delete cascade,
+  -- 宛先URL。同じ端末で登録し直しても増えないよう一意にしておく
+  endpoint   text        not null unique,
+  p256dh     text        not null,
+  auth       text        not null,
+  user_agent text        not null default '',
+  created_at timestamptz not null default now()
+);
+
 -- 無料枠の自動停止対策（GitHub Actions から1日1回 GET するだけの的）
 create table if not exists public.heartbeat (
   id        bigserial   primary key,
@@ -154,6 +167,8 @@ create index if not exists restrictions_room_id_user_id_idx
   on public.restrictions (room_id, user_id);
 create index if not exists room_members_user_id_idx
   on public.room_members (user_id);
+create index if not exists push_subscriptions_user_id_idx
+  on public.push_subscriptions (user_id);
 
 
 -- ---------------------------------------------------------------------
@@ -387,6 +402,7 @@ alter table public.rooms        enable row level security;
 alter table public.room_members enable row level security;
 alter table public.restrictions enable row level security;
 alter table public.heartbeat    enable row level security;
+alter table public.push_subscriptions enable row level security;
 
 -- 注: `force row level security`（所有者にも RLS を適用）は敢えて付けない。むしろ明示的に外す。
 --
@@ -409,6 +425,7 @@ alter table public.rooms        no force row level security;
 alter table public.room_members no force row level security;
 alter table public.restrictions no force row level security;
 alter table public.heartbeat    no force row level security;
+alter table public.push_subscriptions no force row level security;
 
 
 -- ---------------------------------------------------------------------
@@ -480,6 +497,16 @@ create policy restrictions_delete_own on public.restrictions
   for delete to authenticated
   using (user_id = (select auth.uid()));
 
+-- --- push_subscriptions ---------------------------------------------
+-- 自分の端末の宛先だけ扱える。相手の宛先は読めない。
+-- 通知を送る Edge Function は service_role で動くため、RLS を通り抜けて
+-- 相手の宛先を引ける（サーバ側のみ。フロントには service_role を出さない）。
+drop policy if exists push_subscriptions_own on public.push_subscriptions;
+create policy push_subscriptions_own on public.push_subscriptions
+  for all to authenticated
+  using      (user_id = (select auth.uid()))
+  with check (user_id = (select auth.uid()) and public.is_room_member(room_id));
+
 -- --- heartbeat ------------------------------------------------------
 -- keepalive ワークフローが未ログイン（anon）で GET するだけ。書き込みは一切不可。
 drop policy if exists heartbeat_select_anyone on public.heartbeat;
@@ -494,14 +521,15 @@ create policy heartbeat_select_anyone on public.heartbeat
 -- Supabase の既定では public スキーマの新規テーブルに anon/authenticated 双方へ
 -- 広めの権限が付く。ここで明示的に絞り直しておく。
 revoke all on public.profiles, public.rooms, public.room_members,
-              public.restrictions, public.heartbeat
+              public.restrictions, public.heartbeat, public.push_subscriptions
   from anon, authenticated;
 
-grant select, insert, update          on public.profiles     to authenticated;
-grant select                          on public.rooms        to authenticated;
-grant select, delete                  on public.room_members to authenticated;
-grant select, insert, update, delete  on public.restrictions to authenticated;
-grant select                          on public.heartbeat    to anon, authenticated;
+grant select, insert, update          on public.profiles           to authenticated;
+grant select                          on public.rooms              to authenticated;
+grant select, delete                  on public.room_members       to authenticated;
+grant select, insert, update, delete  on public.restrictions       to authenticated;
+grant select, insert, update, delete  on public.push_subscriptions to authenticated;
+grant select                          on public.heartbeat          to anon, authenticated;
 
 -- 関数の実行権限
 revoke all on function public.is_room_member(uuid)     from public, anon;

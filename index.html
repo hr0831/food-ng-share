@@ -359,6 +359,21 @@
       <span class="field__label">表示名</span>
       <input type="text" id="settings-name" maxlength="20" autocomplete="nickname">
     </label>
+    <!-- プッシュ通知（対応環境でのみ表示。ui.js が制御） -->
+    <div class="pushbox" id="settings-push" hidden>
+      <div class="pushbox__head">
+        <span data-icon="allergy" data-icon-size="16"></span>
+        <span>相手の更新を通知</span>
+        <span class="badge" id="push-state">確認中</span>
+      </div>
+      <p class="note" id="push-note"></p>
+      <div class="btnrow">
+        <button type="button" class="btn btn--sm" id="btn-push-on">通知をオンにする</button>
+        <button type="button" class="btn btn--sm" id="btn-push-test" hidden>テスト通知</button>
+        <button type="button" class="btn btn--sm" id="btn-push-off" hidden>オフにする</button>
+      </div>
+    </div>
+
     <p class="note" id="settings-account"></p>
     <div class="dlg__actions">
       <button type="button" value="cancel" class="btn" id="settings-close">閉じる</button>

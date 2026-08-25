@@ -256,6 +256,27 @@ main {
 .note  { color: var(--text-muted); font-size: .75rem; line-height: 1.5; }
 .note--error { color: var(--danger); }
 
+/* 設定ダイアログ内の通知セクション */
+.pushbox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-btn);
+  background: var(--bg);
+}
+.pushbox__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: .875rem;
+  font-weight: 700;
+}
+.pushbox__head > span:first-child { color: var(--accent); display: flex; }
+.pushbox__head > span:nth-child(2) { flex: 1 1 auto; }
+.pushbox .btnrow > .btn { flex: 1 1 auto; }
+
 /* 見落とすと詰まる案内（ホーム画面起動時のログイン方法など） */
 .tip {
   display: flex;
