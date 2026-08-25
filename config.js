@@ -37,7 +37,8 @@ export const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_5dzFkfMvb1Eplrsuo6-d-w_P
  * ★対になる「秘密のカギ」は、Supabase の Edge Functions シークレットにだけ
  *   登録してください。ここや GitHub には絶対に書かないこと。
  */
-export const VAPID_PUBLIC_KEY = "";
+export const VAPID_PUBLIC_KEY =
+  "BKte5grIGOz3RMyAa13mm4uU36dS25_G10wP5V3WHdgtubt3WBvByY9dpFCSE4rkPtXRkNUSiLlaOlJY5ZNDqO4";
 
 /** 設定がプレースホルダのままかどうか（未設定の案内を出すために使う） */
 export const IS_CONFIGURED =
