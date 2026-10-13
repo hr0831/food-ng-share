@@ -105,6 +105,7 @@ let inAppScreen = false;
 function updateModebar() {
   $("#modebar").hidden = !inAppScreen || state.tab === "play";
   applyModebarOffset();
+  applyTabTheme();
 }
 
 function showScreen(name) {
@@ -798,8 +799,84 @@ function gameExcluded() {
 
 /* --- おみくじ --- */
 
+/* --- おみくじの抽選演出 ---
+ *
+ * 結果そのものは日付とルームから先に決まっている。演出は「どこまで期待度が
+ * 上がるか」を見せているだけで、結果を変えることはない。
+ * 良い運勢ほど上の段まで行くので、途中で今日の当たり外れが見当つく。
+ */
+const HEAT_TIERS = [
+  { key: "t1", caption: "…", ms: 380 },
+  { key: "t2", caption: "お？", ms: 420 },
+  { key: "t3", caption: "チャンス！", ms: 460 },
+  { key: "t4", caption: "激アツ！！", ms: 520 },
+  { key: "t5", caption: "超激アツ！！！", ms: 560 },
+];
+
+const prefersReducedMotion = () =>
+  window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
+
+function heatSequence(heat) {
+  const top = Math.min(HEAT_TIERS.length, Math.max(1, Number(heat?.max) || 2));
+  const seq = HEAT_TIERS.slice(0, top);
+  // ガセ: 本来より1つ上まで見せてから落とす。上がっても安心できなくなる
+  if (heat?.fake && top < HEAT_TIERS.length) {
+    seq.push(HEAT_TIERS[top], HEAT_TIERS[top - 1]);
+  }
+  return seq;
+}
+
+/** 段を1つずつ上げていく。タップされたらその場で打ち切る。 */
+async function runHeat(heat) {
+  if (prefersReducedMotion()) return;
+
+  const box = $("#omikuji-heat");
+  const card = $("#omikuji");
+  card.classList.add("omikuji--running");
+  box.hidden = false;
+
+  let skip = null;
+  const onTap = () => skip?.();
+  box.addEventListener("click", onTap);
+
+  for (const tier of heatSequence(heat)) {
+    box.dataset.tier = tier.key;
+    $("#heat-caption").textContent = tier.caption;
+    const tapped = await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), tier.ms);
+      skip = () => { clearTimeout(timer); resolve(true); };
+    });
+    if (tapped) break;
+  }
+
+  box.removeEventListener("click", onTap);
+  skip = null;
+  box.hidden = true;
+  delete box.dataset.tier;
+  card.classList.remove("omikuji--running");
+}
+
+/** 「おみくじを引く」を押したとき。演出 → 保存 → 結果表示 の順。 */
+async function playOmikuji() {
+  const btn = $("#btn-omikuji");
+  if (btn.disabled || !state.room) return;
+  btn.disabled = true;
+
+  const dateKey = Game.jstDateKey();
+  // 演出の熱さを決めるために、先に結果を引いておく（表示はまだしない）
+  const { heat } = Game.drawOmikuji(state.room.id, dateKey, allItems());
+  await runHeat(heat);
+
+  try { localStorage.setItem(OMIKUJI_KEY, dateKey); } catch { /* 無くても動く */ }
+  renderOmikuji();
+  $("#omikuji-result").classList.add("omikuji__result--reveal");
+  btn.disabled = false;
+}
+
 function renderOmikuji() {
   if (!state.room) return;
+  // 引いた直後だけ弾ませたいので、描き直しのたびに一度外す
+  $("#omikuji-result").classList.remove("omikuji__result--reveal");
   const dateKey = Game.jstDateKey();
   const [, m, d] = dateKey.split("-");
   $("#omikuji-date").textContent = `${Number(m)}月${Number(d)}日`;
@@ -1052,10 +1129,7 @@ function wirePlay() {
   $("#btn-skip").addEventListener("click", skipCurrent);
   $("#btn-again").addEventListener("click", startSet);
 
-  $("#btn-omikuji").addEventListener("click", () => {
-    try { localStorage.setItem(OMIKUJI_KEY, Game.jstDateKey()); } catch { /* 無くても動く */ }
-    renderOmikuji();
-  });
+  $("#btn-omikuji").addEventListener("click", playOmikuji);
 
   // スワイプが使えないとき用（キーボード・読み上げ）
   $$("[data-sort]").forEach((b) =>
@@ -1091,10 +1165,7 @@ function setMode(mode) {
   $$("[data-mode]", $("#modebar")).forEach((b) =>
     b.setAttribute("aria-pressed", String(b.dataset.mode === mode))
   );
-
-  // ブラウザのテーマ色（実際の背景色をそのまま渡す）
-  const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
-  $$('meta[name="theme-color"]').forEach((m) => m.setAttribute("content", bg));
+  applyThemeColor();
 
   // モードで意味が変わる文言
   const like = mode === "like";
@@ -1103,6 +1174,27 @@ function setMode(mode) {
 
   resetAddForm();
   renderAll();
+}
+
+/**
+ * ブラウザのUI（アドレスバー等）の色を、実際の背景色に合わせる。
+ * 配色は「にがて／すき」だけでなく「あそぶタブかどうか」でも変わるので、
+ * どちらが変わったときも必ずここを通す。
+ */
+function applyThemeColor() {
+  const bg = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+  $$('meta[name="theme-color"]').forEach((m) => m.setAttribute("content", bg));
+}
+
+/**
+ * 「あそぶ」タブだけクリーム色にする。
+ * CSS 側が <html data-tab="play"> を見て、配色をまるごと差し替える。
+ * ほかのタブでは属性を空にして、にがて／すき の配色に戻す。
+ */
+function applyTabTheme() {
+  const play = inAppScreen && state.tab === "play";
+  document.documentElement.dataset.tab = play ? "play" : "";
+  applyThemeColor();
 }
 
 /** モード切替バーが appbar の真下に貼り付くよう、実測した高さを top に入れる */

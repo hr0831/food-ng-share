@@ -62,6 +62,14 @@ function mulberry32(seed) {
  * 必ず前向きにし、食べ物の話だけで完結させる（運勢で人を不安にさせない）。
  * weight は出やすさ。大吉と凶を細くして、真ん中を厚くしている。
  */
+/**
+ * 期待度の上限。演出が「どこまで昇格するか」を決める。
+ * 良い運勢ほど上まで行くので、途中で「今日はいけるかも」が分かる。
+ */
+const HEAT_MAX = {
+  kyo: 1, suekichi: 2, kichi: 2, shokichi: 3, chukichi: 4, daikichi: 5,
+};
+
 export const FORTUNES = [
   { key: "daikichi", label: "大吉", weight: 1, message: "迷ったら、いちばん食べたいものを選んで正解の日。" },
   { key: "chukichi", label: "中吉", weight: 2, message: "いつもの店に、まだ頼んでいない一品がある日。" },
@@ -112,7 +120,17 @@ export function drawOmikuji(roomId, dateKey, restrictions = []) {
     if (isSafeForBoth(cand.name, restrictions)) { food = cand; break; }
   }
 
-  return { fortune, food, dateKey };
+  /*
+   * 演出用の情報。
+   * fake は「本来の上限よりひとつ上まで見せてから落ちる」ガセ。
+   * これがあると、上まで上がっても安心できなくなり、毎回ひやりとする。
+   *
+   * ★この rnd() は必ず最後に呼ぶこと。
+   *   途中に差し込むと乱数の並びがずれて、過去と同じ日でも結果が変わってしまう。
+   */
+  const heat = { max: HEAT_MAX[fortune.key] || 2, fake: rnd() < 0.25 };
+
+  return { fortune, food, dateKey, heat };
 }
 
 /* ================================================================== *

@@ -267,7 +267,18 @@
     <div class="tabpanel" data-tab="play" hidden>
 
       <!-- おみくじ。結果はルームIDと日付から計算するので保存していない -->
-      <section class="card card--tight omikuji">
+      <section class="card card--tight omikuji" id="omikuji">
+        <!--
+          抽選中の演出。期待度が段階的に上がっていく。
+          結果そのものは先に決まっていて、演出は「どこまで上がるか」を見せるだけ。
+          タップで飛ばせる（毎日使うものなので、急いでいる日に邪魔をしない）。
+        -->
+        <div class="heat" id="omikuji-heat" hidden>
+          <div class="heat__rays"></div>
+          <div class="heat__caption" id="heat-caption"></div>
+          <div class="heat__skip">タップで飛ばす</div>
+        </div>
+
         <div class="omikuji__head">
           <span data-icon="sparkle" data-icon-size="17"></span>
           <h2>今日のおみくじ</h2>

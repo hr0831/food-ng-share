@@ -18,6 +18,16 @@
   --dislike:     #6E8A84;  /* 苦手・好み */
   --online:      #2FA36F;  /* プレゼンス表示 */
 
+  /*
+   * 色で塗りつぶした面（ボタン・バッジ・トースト）に載せる文字の色。
+   *
+   * 明るいモードの accent / danger は濃い色なので白が読める。
+   * 暗いモードでは逆に accent / danger の方が明るくなるため、白のままだと
+   * 「薄い色の上に白」になって読めない。暗いモードでは黒に近い色にする。
+   * アレルギーの表示にも効くので、ここは見た目より読みやすさを優先する。
+   */
+  --on-fill:     #FFFFFF;
+
   --r-chip: 999px;
   --r-card: 12px;
   --r-btn:  10px;
@@ -41,6 +51,7 @@
     --danger-soft: #3A1F1C;
     --dislike:     #9AB0AA;
     --online:      #57C99A;
+    --on-fill:     #121412;   /* 塗りつぶしの上の文字は、暗いモードでは黒に近づける */
   }
 }
 
@@ -74,6 +85,42 @@
     --accent-soft: #3A2029;
     --dislike:     #A8969D;
     --online:      #E88BAF;
+  }
+}
+
+/* ---------------------------------------------------------------- *
+   「あそぶ」タブの配色（ui.js が <html data-tab="play"> を付ける）
+
+   ミント＝にがて、桃＝すき に対して、クリームは温度が中立。
+   あいだに置いても濁らず、「ここは別の場所」とすぐ分かる。
+
+   にがて／すき の指定より後に書いてあるので、あそぶタブでは必ずこちらが勝つ。
+   ここでも --danger（アレルギーの赤）だけは変えない。
+   ---------------------------------------------------------------- */
+
+:root[data-tab="play"] {
+  --bg:          #FBF5E9;  /* 生成り */
+  --surface:     #FFFDF8;
+  --border:      #EDE1C9;
+  --text:        #2A2316;
+  --text-muted:  #7A6D55;
+  --accent:      #B07A1E;  /* 蜂蜜色。白文字が読める濃さまで落としてある */
+  --accent-soft: #F7EBD2;
+  --dislike:     #8C8068;
+  --online:      #B8862B;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-tab="play"] {
+    --bg:          #15120B;
+    --surface:     #201B12;
+    --border:      #342B1C;
+    --text:        #F3EDE1;
+    --text-muted:  #A89A82;
+    --accent:      #E0B45E;
+    --accent-soft: #352B18;
+    --dislike:     #A89A82;
+    --online:      #E0B45E;
   }
 }
 
@@ -209,7 +256,7 @@ main {
   -webkit-tap-highlight-color: transparent;
 }
 .modebtn[aria-pressed="true"] {
-  color: #fff;
+  color: var(--on-fill);
   background: var(--accent);
   border-color: var(--accent);
 }
@@ -349,8 +396,8 @@ summary:focus-visible {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn--danger  { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn--primary { background: var(--accent); border-color: var(--accent); color: var(--on-fill); }
+.btn--danger  { background: var(--danger); border-color: var(--danger); color: var(--on-fill); }
 .btn--block   { width: 100%; }
 /* ツールバー内に置く小さめのボタン。44pxのタップ領域は保つ */
 .btn--sm { font-size: .8125rem; padding: 8px 12px; flex: 0 0 auto; }
@@ -432,7 +479,7 @@ summary:focus-visible {
   border-radius: var(--r-btn);
 }
 .seg__opt input:checked + span {
-  color: #fff;
+  color: var(--on-fill);
   background: var(--accent);
   border-color: var(--accent);
 }
@@ -524,7 +571,7 @@ summary:focus-visible {
   gap: 6px;
   padding-right: 18px;
   background: var(--danger);
-  color: #fff;
+  color: var(--on-fill);
   font-size: .8125rem;
   font-weight: 700;
 }
@@ -586,12 +633,12 @@ summary:focus-visible {
 .badge b { font-size: .8125rem; line-height: 1; }
 
 /* レベル: 3 が最も強い。にがて側は警告色、すき側はアクセント（桃）で出す */
-.badge--lv3 { background: var(--danger); border-color: var(--danger); color: #fff; }
+.badge--lv3 { background: var(--danger); border-color: var(--danger); color: var(--on-fill); }
 .badge--lv2 { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
 .badge--lv1 { color: var(--text-muted); }
 :root[data-mode="like"] .badge--lv3 { background: var(--accent); border-color: var(--accent); }
 
-.badge--kind    { background: var(--danger); border-color: var(--danger); color: #fff; }
+.badge--kind    { background: var(--danger); border-color: var(--danger); color: var(--on-fill); }
 .badge--cat     { background: transparent; }
 .badge--who     { background: var(--accent-soft); border-color: transparent; color: var(--text); }
 
@@ -728,9 +775,9 @@ summary:focus-visible {
   font-size: .875rem;
   line-height: 1.4;
 }
-.toast--error  { background: var(--danger); color: #fff; }
+.toast--error  { background: var(--danger); color: var(--on-fill); }
 /* アレルギー項目を消したときの「元に戻す」は見逃されると影響が大きいので強調する */
-.toast--danger { background: var(--danger); color: #fff; }
+.toast--danger { background: var(--danger); color: var(--on-fill); }
 .toast__msg { flex: 1 1 auto; }
 .toast__action {
   flex: 0 0 auto;
@@ -833,6 +880,10 @@ details.card[open] > summary { margin-bottom: 4px; }
 
 /* --- おみくじ ---------------------------------------------------- */
 
+.omikuji { position: relative; overflow: hidden; }
+/* 抽選中は舞台を広げる。細い帯のまま演出しても効かないため */
+.omikuji--running { min-height: 230px; justify-content: center; }
+
 .omikuji__head { display: flex; align-items: center; gap: 8px; color: var(--accent); }
 .omikuji__head h2 { font-size: .9375rem; color: var(--text); flex: 1 1 auto; }
 .omikuji__result {
@@ -861,6 +912,90 @@ details.card[open] > summary { margin-bottom: 4px; }
   justify-content: center;
 }
 .omikuji__food b { font-size: 1.125rem; color: var(--text); }
+
+/* --- おみくじの抽選演出 ------------------------------------------- *
+   期待度を5段階で上げていく。段ごとに --heat（光の色）が変わり、
+   上の段ほど回転が速く、揺れが強くなる。
+   色だけでなく文字（チャンス／激アツ）でも伝えるので、
+   色の見え方が違う環境でも段がわかる。
+   ------------------------------------------------------------------ */
+
+.heat {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  cursor: pointer;
+  overflow: hidden;
+  --heat: #9AA5A2;
+  --heat-spin: 6s;
+}
+.heat[data-tier="t2"] { --heat: #3B82F6; --heat-spin: 3.4s; }
+.heat[data-tier="t3"] { --heat: #1FA971; --heat-spin: 2.2s; }
+.heat[data-tier="t4"] { --heat: #D92D20; --heat-spin: 1.2s; }
+.heat[data-tier="t5"] { --heat: #B04FD8; --heat-spin: .7s; }
+
+/* 放射状の光。中心から筋が伸びて回る */
+.heat__rays {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 260%; aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  background: repeating-conic-gradient(
+    from 0deg, var(--heat) 0deg 6deg, transparent 6deg 20deg);
+  opacity: .22;
+  animation: heat-spin var(--heat-spin) linear infinite;
+}
+/* 最上段だけ虹。ここまで来たら大吉 */
+.heat[data-tier="t5"] .heat__rays {
+  background: conic-gradient(from 0deg,
+    #E0453A, #E88B2E, #D9C227, #34A853, #2BB3C0, #3B6FE0, #9B4FD8, #E0453A);
+  opacity: .34;
+}
+
+.heat__caption {
+  position: relative;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: var(--heat);
+  text-align: center;
+  padding: 0 16px;
+}
+.heat[data-tier="t4"] .heat__caption,
+.heat[data-tier="t5"] .heat__caption { font-size: 1.875rem; }
+
+/* 上の段ほど強く震える */
+.heat[data-tier="t3"] { animation: heat-shake .22s linear infinite; }
+.heat[data-tier="t4"] { animation: heat-shake .14s linear infinite; }
+.heat[data-tier="t5"] { animation: heat-shake .09s linear infinite; }
+
+.heat__skip {
+  position: absolute;
+  left: 0; right: 0; bottom: 10px;
+  text-align: center;
+  font-size: .6875rem;
+  color: var(--text-muted);
+}
+
+@keyframes heat-spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+@keyframes heat-shake {
+  0%, 100% { transform: translate(0, 0); }
+  25%      { transform: translate(-2px, 1px); }
+  50%      { transform: translate(2px, -1px); }
+  75%      { transform: translate(-1px, -2px); }
+}
+
+/* 結果が出る瞬間。運勢の文字が弾んで出る */
+.omikuji__result--reveal .omikuji__fortune { animation: heat-pop .42s cubic-bezier(.2, 1.5, .4, 1); }
+@keyframes heat-pop {
+  0%   { transform: scale(.4); opacity: 0; }
+  60%  { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); }
+}
 
 /* --- 仕分け ------------------------------------------------------ */
 
@@ -914,7 +1049,7 @@ details.card[open] > summary { margin-bottom: 4px; }
 .fan__z--l1 { right: 2px; bottom: 8px; }
 
 /* いま向いている区画。にがて側と すき側で色を分ける */
-.fan__z--on { color: #fff; }
+.fan__z--on { color: var(--on-fill); }
 .fan__z--on.fan__z--l3,
 .fan__z--on.fan__z--l2,
 .fan__z--on.fan__z--l1 { background: var(--accent); border-color: var(--accent); }
@@ -978,6 +1113,9 @@ details.card[open] > summary { margin-bottom: 4px; }
 
 @media (prefers-reduced-motion: reduce) {
   .fan, .fan__z, .sortcard__verdict { transition: none; }
+  /* 動きを減らす設定の人には演出を見せない（ui.js 側でも飛ばしている） */
+  .heat__rays, .heat { animation: none; }
+  .omikuji__result--reveal .omikuji__fortune { animation: none; }
 }
 
 [hidden] { display: none !important; }
