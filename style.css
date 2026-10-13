@@ -672,9 +672,10 @@ summary:focus-visible {
 }
 .disclaimer > span { margin-top: 1px; }
 
+/* 4分割。375px なら1つ約93pxで、アイコン＋3文字が収まる */
 .tabbar {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
 }
 .tabbar button {
   font-family: inherit;
@@ -801,5 +802,182 @@ details.card > summary {
   list-style: revert;
 }
 details.card[open] > summary { margin-bottom: 4px; }
+
+/* ---------------------------------------------------------------- *
+   あそぶタブ
+   ---------------------------------------------------------------- */
+
+/* 画面には出さないが、キーボード操作と読み上げでは使える */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+/* フォーカスが当たったら見えるようにする（キーボード操作中に迷子にならない） */
+.sr-only:focus-within {
+  position: static;
+  width: auto; height: auto;
+  margin: 0; padding: 12px;
+  overflow: visible;
+  clip-path: none;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-card);
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+
+.btnrow--center { justify-content: center; }
+.btnrow--center > .btn { flex: 0 0 auto; min-width: 140px; }
+
+/* --- おみくじ ---------------------------------------------------- */
+
+.omikuji__head { display: flex; align-items: center; gap: 8px; color: var(--accent); }
+.omikuji__head h2 { font-size: .9375rem; color: var(--text); flex: 1 1 auto; }
+.omikuji__result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+.omikuji__fortune {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: .08em;
+  color: var(--accent);
+}
+/* 凶だけは色を変える。ただし警告色(--danger)は使わない。
+   アレルギーの赤と同じ色にすると、危険表示の重みが薄れてしまうため。 */
+.omikuji__fortune[data-fortune="kyo"] { color: var(--text-muted); }
+.omikuji__msg { font-size: .875rem; line-height: 1.6; }
+.omikuji__food {
+  display: flex; align-items: center; gap: 8px;
+  font-size: .75rem; color: var(--text-muted);
+  border-top: 1px dashed var(--border);
+  padding-top: 10px; margin-top: 4px; width: 100%;
+  justify-content: center;
+}
+.omikuji__food b { font-size: 1.125rem; color: var(--text); }
+
+/* --- 仕分け ------------------------------------------------------ */
+
+.sorter { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+/* 仕分けカードの外に置く帯。結果画面に切り替わっても相性度は見えたままにする */
+.sorter__bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; min-height: 26px; margin-bottom: 10px;
+}
+.sorter__progress { font-size: .75rem; font-weight: 700; color: var(--text-muted); }
+.sorter__hint { font-size: .75rem; color: var(--text-muted); text-align: center; line-height: 1.5; }
+.sorter__foot { text-align: center; padding: 0 8px; }
+
+.deck {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 210px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 扇（6区画のラベル）。指を置いている間だけ浮かび上がる */
+.fan {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity .15s ease;
+  pointer-events: none;
+}
+.deck--dragging .fan { opacity: 1; }
+
+.fan__z {
+  position: absolute;
+  font-size: .6875rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 6px 9px;
+  border-radius: var(--r-chip);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: transform .12s ease, background-color .12s ease, color .12s ease;
+}
+.fan__z--a3 { left: 2px;  top: 8px; }
+.fan__z--a2 { left: 2px;  top: 50%; transform: translateY(-50%); }
+.fan__z--a1 { left: 2px;  bottom: 8px; }
+.fan__z--l3 { right: 2px; top: 8px; }
+.fan__z--l2 { right: 2px; top: 50%; transform: translateY(-50%); }
+.fan__z--l1 { right: 2px; bottom: 8px; }
+
+/* いま向いている区画。にがて側と すき側で色を分ける */
+.fan__z--on { color: #fff; }
+.fan__z--on.fan__z--l3,
+.fan__z--on.fan__z--l2,
+.fan__z--on.fan__z--l1 { background: var(--accent); border-color: var(--accent); }
+.fan__z--on.fan__z--a3,
+.fan__z--on.fan__z--a2,
+.fan__z--on.fan__z--a1 { background: var(--dislike); border-color: var(--dislike); }
+.fan__z--on.fan__z--a2 { transform: translateY(-50%) scale(1.12); }
+.fan__z--on.fan__z--l2 { transform: translateY(-50%) scale(1.12); }
+.fan__z--on.fan__z--a3,
+.fan__z--on.fan__z--a1,
+.fan__z--on.fan__z--l3,
+.fan__z--on.fan__z--l1 { transform: scale(1.12); }
+
+/*
+ * カード。
+ * touch-action: none はここだけ。縦方向が「強さ」の意味を持つので
+ * ブラウザのスクロールに指を取られては困る。カードの外側は普通に動く。
+ */
+.sortcard {
+  position: relative;
+  z-index: 1;
+  width: min(290px, 78%);
+  height: 170px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  text-align: center;
+  touch-action: none;
+  cursor: grab;
+  -webkit-tap-highlight-color: transparent;
+  will-change: transform;
+}
+.sortcard:active { cursor: grabbing; }
+.sortcard__cat { font-size: .6875rem; font-weight: 700; color: var(--text-muted); }
+.sortcard__name {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.3;
+  word-break: break-word;
+}
+/* 引っぱっている間だけ出る判定文字。離した瞬間の表示がそのまま登録される */
+.sortcard__verdict {
+  font-size: .8125rem;
+  font-weight: 700;
+  min-height: 1.2em;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity .12s ease;
+}
+.sortcard__verdict[data-side] { opacity: 1; }
+.sortcard__verdict[data-side="like"]  { color: var(--accent); }
+.sortcard__verdict[data-side="avoid"] { color: var(--dislike); }
+
+.sortresult { text-align: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fan, .fan__z, .sortcard__verdict { transition: none; }
+}
 
 [hidden] { display: none !important; }

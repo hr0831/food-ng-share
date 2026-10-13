@@ -8,6 +8,7 @@ import * as DB from "./data.js";
 import { subscribeRoom } from "./realtime.js";
 import { icon, mountIcons } from "./icons.js";
 import * as Push from "./push.js";
+import * as Game from "./game.js";
 
 /* ================================================================== *
  * 小さなヘルパー
@@ -29,13 +30,12 @@ const dtf = new Intl.DateTimeFormat("ja-JP", {
 });
 const fmtDateTime = (iso) => (iso ? dtf.format(new Date(iso)) : "―");
 
-/** 重複判定用の正規化（全角半角・大文字小文字・空白のゆれを吸収） */
-function normalizeFood(s) {
-  return String(s || "")
-    .normalize("NFKC")
-    .replace(/[\s　]/g, "")
-    .toLowerCase();
-}
+/*
+ * 重複判定用の正規化（全角半角・大文字小文字・空白のゆれを吸収）。
+ * 仕分け（game.js）とまったく同じ規則でないと「登録済みなのにまた出題される」
+ * が起きるので、実体は data.js に1つだけ置いて共有する。
+ */
+const normalizeFood = DB.normalizeFood;
 
 /* ================================================================== *
  * 状態
@@ -57,6 +57,13 @@ const state = {
   filterLv3: false,               // まとめ画面「レベル3／大好き だけ表示」
   presenceOthers: [],
   sync: null,                     // realtime のハンドル
+
+  /*
+   * 「あそぶ」タブの進行状況。
+   * deck は今の10問、answers はこのセットで答えた内容（終了時の一致判定に使う）。
+   * skipped は「とばした問題」で、端末の localStorage に保存する。
+   */
+  play: { deck: [], done: 0, answers: [], skipped: null, busy: false },
 };
 
 const myId = () => state.user?.id || "";
@@ -89,11 +96,23 @@ function applyFooterHeight() {
   requestAnimationFrame(set);
 }
 
+/*
+ * にがて／すき の切替バーは「あそぶ」タブでは出さない。
+ * 仕分けは1枚のカードで両方を扱うので切替に意味が無く、
+ * 56px ぶんの縦を空けるとカードが1画面に収まりやすくなる。
+ */
+let inAppScreen = false;
+function updateModebar() {
+  $("#modebar").hidden = !inAppScreen || state.tab === "play";
+  applyModebarOffset();
+}
+
 function showScreen(name) {
   $$(".screen").forEach((s) => (s.hidden = s.dataset.screen !== name));
   const inApp = name === "app";
+  inAppScreen = inApp;
   $("#tabbar").hidden = !inApp;
-  $("#modebar").hidden = !inApp;
+  updateModebar();
   $("#btn-settings").hidden = !inApp;
   // 接続状態はルームを購読している間しか意味を持たないので、それ以外では隠す
   $("#conn").hidden = !inApp;
@@ -754,6 +773,299 @@ function buildShareText() {
   return lines.join("\n");
 }
 
+/* ---- あそぶタブ ---------------------------------------------------
+ *
+ * 新しいテーブルは使わない。
+ *   仕分けの答え … restrictions に source="game" で入る
+ *   おみくじ     … ルームIDと日付から計算（保存しない＝ふたりに同じ結果）
+ *   相性度       … 手元のデータを数えるだけ
+ * ------------------------------------------------------------------ */
+
+const OMIKUJI_KEY = "food-ng-share.omikujiDrawn";
+
+const itemsOf = (uid) => allItems().filter((r) => r.user_id === uid);
+const myAllItems = () => itemsOf(myId());
+const partnerAllItems = () => allItems().filter((r) => r.user_id !== myId());
+
+/** 出題しないもの＝自分が既に登録しているもの＋とばしたもの */
+function gameExcluded() {
+  const p = state.play;
+  if (!p.skipped) p.skipped = Game.loadSkipped(myId());
+  const set = new Set(p.skipped);
+  for (const r of myAllItems()) set.add(normalizeFood(r.food));
+  return set;
+}
+
+/* --- おみくじ --- */
+
+function renderOmikuji() {
+  if (!state.room) return;
+  const dateKey = Game.jstDateKey();
+  const [, m, d] = dateKey.split("-");
+  $("#omikuji-date").textContent = `${Number(m)}月${Number(d)}日`;
+
+  let drawn = null;
+  try { drawn = localStorage.getItem(OMIKUJI_KEY); } catch { /* 使えなくても困らない */ }
+  const opened = drawn === dateKey;
+  $("#btn-omikuji").hidden = opened;
+  $("#omikuji-result").hidden = !opened;
+  if (!opened) return;
+
+  const { fortune, food } = Game.drawOmikuji(state.room.id, dateKey, allItems());
+  const box = $("#omikuji-fortune");
+  box.textContent = fortune.label;
+  box.dataset.fortune = fortune.key;
+  $("#omikuji-msg").textContent = fortune.message;
+  $("#omikuji-food").textContent = food ? food.name : "―";
+
+  const base = "ラッキーごはんは、アレルギーと「食べられない」を除いて選んでいます。";
+  const pid = partnerId();
+  $("#omikuji-note").textContent = pid
+    ? `${base} この結果は${nameOf(pid)}さんにも同じものが出ます。`
+    : base;
+}
+
+/* --- 相性度 --- */
+
+function renderCompat() {
+  const badge = $("#compat");
+  if (!badge) return;
+  const pid = partnerId();
+  if (!pid) { badge.hidden = true; return; }
+
+  const c = Game.compatibility(myAllItems(), partnerAllItems());
+  if (!c.total) { badge.hidden = true; return; }
+  badge.textContent = `食の相性 ${c.percent}%`;
+  badge.title = `ふたりとも登録している${c.total}件のうち、${c.matched}件で向きが一致しています`;
+  badge.hidden = false;
+}
+
+/* --- 仕分け --- */
+
+/** いま指が向いている区画の呼び名（離した瞬間にこれが登録される） */
+function zoneLabel(zone) {
+  return DB.levelInfo(zone.side === "like" ? "like" : "dislike", zone.level).seg;
+}
+
+/** 扇の点灯とカード上の文字を、指の動きに合わせて更新する */
+function previewZone(zone) {
+  $$(".fan__z").forEach((z) => z.classList.remove("fan__z--on"));
+  const verdict = $("#sortcard-verdict");
+  if (!zone) {
+    verdict.textContent = "";
+    delete verdict.dataset.side;
+    return;
+  }
+  $(`.fan__z[data-zone="${zone.side}-${zone.level}"]`)?.classList.add("fan__z--on");
+  verdict.textContent = zoneLabel(zone);
+  verdict.dataset.side = zone.side;
+}
+
+function renderSorter() {
+  const p = state.play;
+  const hasCard = p.deck.length > 0;
+  $("#sorter").hidden = !hasCard;
+  $("#sort-result").hidden = hasCard;
+  if (!hasCard) return;
+
+  const food = p.deck[0];
+  $("#sortcard-name").textContent = food.name;
+  $("#sortcard-cat").textContent = DB.CATEGORIES[food.category].label;
+  $("#sort-progress").textContent = `${p.done + 1} / ${Game.SET_SIZE}問目`;
+  previewZone(null);
+}
+
+function showSortResult(title, body, canContinue = true) {
+  $("#sorter").hidden = true;
+  $("#sort-progress").textContent = "";   // 帯は残るが、進み具合は意味を失う
+  $("#sort-result").hidden = false;
+  $("#sort-result-title").textContent = title;
+  $("#sort-result-body").textContent = body;
+  $("#btn-again").hidden = !canContinue;
+}
+
+function startSet() {
+  const p = state.play;
+  p.deck = Game.pickQuestions(gameExcluded());
+  p.done = 0;
+  p.answers = [];
+  if (!p.deck.length) {
+    showSortResult(
+      "ぜんぶ仕分けました",
+      "用意した食べ物は、すべて答え終わりました。ここに無いものは、マイリストから手で追加できます。",
+      false
+    );
+    return;
+  }
+  renderSorter();
+}
+
+/** 山と進行状況を白紙に戻す（ログアウト・退出時） */
+function resetPlay() {
+  state.play = { deck: [], done: 0, answers: [], skipped: null, busy: false };
+}
+
+function renderPlay() {
+  if (!state.room) return;
+  renderOmikuji();
+  renderCompat();
+  // 途中のセットがあれば続きから。無ければ新しい10問を配る
+  if (!state.play.deck.length && !state.play.done) startSet();
+  else renderSorter();
+}
+
+/** 名前の列を「たこやき、ほか2つ」の形に縮める（通知も画面も同じ文面にする） */
+function summarizeNames(names) {
+  return names.length > 1 ? `${names[0]}、ほか${names.length - 1}つ` : names[0];
+}
+
+function finishSet() {
+  const p = state.play;
+  const pid = partnerId();
+  const names = pid ? Game.matchedInSet(p.answers, partnerAllItems()) : [];
+
+  let body;
+  if (!pid) {
+    body = "相手が参加すると、同じ食べ物の答えが揃ったときに「一致」が分かるようになります。";
+  } else if (!names.length) {
+    body = `${nameOf(pid)}さんとの一致は、まだありません。相手も仕分けをすると分かります。`;
+  } else {
+    body = `${nameOf(pid)}さんと${names.length}つ一致しました（${summarizeNames(names)}）。`;
+  }
+
+  showSortResult(`${p.done}問おつかれさまでした`, body, Game.remainingCount(gameExcluded()) > 0);
+  renderCompat();
+
+  /*
+   * 相手への知らせは、セットの終わりに「まとめて1通」だけ。
+   * 1件ごとに送ると10連発になる。失敗しても遊びは続けられるので黙って流す。
+   */
+  if (pid && names.length) {
+    Push.sendMatchNotice(names).catch(() => {});
+  }
+}
+
+/*
+ * 送信中の追加を覚えておく。
+ * 「元に戻す」が insert の完了より先に走ると、削除が空振りしたあとに
+ * insert が着地して項目が復活してしまうため、必ず完了を待ってから消す。
+ */
+const pendingGameAdds = new Map();
+
+let closeGameToast = null;
+function gameToast(message, id, foodName) {
+  // 10枚ぶんのトーストが積み上がると画面が埋まるので、常に1つだけにする
+  closeGameToast?.();
+  closeGameToast = toast(message, {
+    duration: 5000,
+    action: { label: "元に戻す", run: () => undoGameAdd(id, foodName) },
+  });
+}
+
+async function addGameItem(food, kind, level) {
+  if (!state.room) return;
+  const id = DB.newId();
+  const now = new Date().toISOString();
+
+  // 楽観的更新。id はクライアント採番なので Realtime のエコーと衝突しない
+  mergeRow({
+    id, room_id: state.room.id, user_id: myId(),
+    food: food.name, kind, level: Number(level), category: food.category,
+    note: "", source: "game", created_at: now, updated_at: now, _pending: true,
+  });
+  renderAll();
+  gameToast(`「${food.name}」を ${DB.levelInfo(kind, level).seg} に登録しました`, id, food.name);
+
+  const task = DB.addRestriction({
+    id, roomId: state.room.id, userId: myId(),
+    food: food.name, kind, level, category: food.category, note: "", source: "game",
+  });
+  pendingGameAdds.set(id, task);
+
+  try {
+    mergeRow(await task);
+    renderAll();
+  } catch (err) {
+    state.restrictions.delete(id);
+    renderAll();
+    await toastError(err);
+  } finally {
+    pendingGameAdds.delete(id);
+  }
+}
+
+async function undoGameAdd(id, foodName) {
+  await pendingGameAdds.get(id)?.catch(() => {});   // 登録の着地を待ってから消す
+  const row = state.restrictions.get(id);
+  state.restrictions.delete(id);
+  renderAll();
+  try {
+    await DB.deleteRestriction(id);
+    const i = state.play.answers.findIndex((a) => a.food === foodName);
+    if (i >= 0) state.play.answers.splice(i, 1);
+    renderCompat();
+    toast(`「${foodName}」の登録を取り消しました。またあとで出てきます。`);
+  } catch (err) {
+    if (row) mergeRow(row);
+    renderAll();
+    await toastError(err);
+  }
+}
+
+function advance() {
+  const p = state.play;
+  if (p.done >= Game.SET_SIZE || !p.deck.length) finishSet();
+  else renderSorter();
+}
+
+function commitZone(zone) {
+  const p = state.play;
+  if (!p.deck.length) return;
+
+  const food = p.deck.shift();
+  p.done += 1;
+  p.answers.push({ food: food.name, polarity: zone.side });
+
+  // 区分は dislike 止まり。アレルギーをスワイプの勢いで付けさせない
+  addGameItem(food, zone.side === "like" ? "like" : "dislike", zone.level);
+  advance();
+}
+
+function skipCurrent() {
+  const p = state.play;
+  if (!p.deck.length) return;
+  const food = p.deck.shift();
+  p.skipped.add(normalizeFood(food.name));
+  Game.saveSkipped(myId(), p.skipped);
+  p.done += 1;
+  advance();
+}
+
+function wirePlay() {
+  Game.attachFanSwipe($("#sortcard"), {
+    onStart: () => $("#deck").classList.add("deck--dragging"),
+    onEnd: () => $("#deck").classList.remove("deck--dragging"),
+    onPreview: previewZone,
+    onCommit: commitZone,
+  });
+
+  $("#btn-skip").addEventListener("click", skipCurrent);
+  $("#btn-again").addEventListener("click", startSet);
+
+  $("#btn-omikuji").addEventListener("click", () => {
+    try { localStorage.setItem(OMIKUJI_KEY, Game.jstDateKey()); } catch { /* 無くても動く */ }
+    renderOmikuji();
+  });
+
+  // スワイプが使えないとき用（キーボード・読み上げ）
+  $$("[data-sort]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const [side, level] = b.dataset.sort.split("-");
+      commitZone({ side, level: Number(level) });
+    })
+  );
+}
+
 /* ---- 全体 -------------------------------------------------------- */
 
 function renderAll() {
@@ -761,6 +1073,9 @@ function renderAll() {
   renderPartner();
   renderSummary();
   renderPresence();
+  // 相性度は相手の更新でも変わるので、描画のたびに取り直す。
+  // 進行中のカードには触らない（ここで renderPlay を呼ぶと山が配り直しになる）
+  renderCompat();
 }
 
 /**
@@ -804,6 +1119,8 @@ function switchTab(tab) {
     if (b.dataset.tabbtn === tab) b.setAttribute("aria-current", "page");
     else b.removeAttribute("aria-current");
   });
+  updateModebar();
+  if (tab === "play") renderPlay();
   window.scrollTo({ top: 0 });
 }
 
@@ -1182,6 +1499,7 @@ async function handleLeaveRoom() {
     state.room = null;
     state.members = [];
     state.restrictions.clear();
+    resetPlay();
     showScreen("room");
     initRoomScreen();
     toast("ルームから退出しました");
@@ -1203,6 +1521,7 @@ async function refreshRoomData() {
     state.room = null;
     state.members = [];
     state.restrictions.clear();
+    resetPlay();
     showScreen("room");
     initRoomScreen();
     return;
@@ -1343,6 +1662,8 @@ function toLoggedOut() {
   state.members = [];
   state.profiles.clear();
   state.restrictions.clear();
+  // 別の人がログインしたときに、前の人の山と「とばした記録」を引き継がない
+  resetPlay();
   showScreen("auth");
   startCooldownTicker();
 }
@@ -1584,6 +1905,9 @@ function wireEvents() {
 
   // --- 通知 ---
   wirePush();
+
+  // --- あそぶ ---
+  wirePlay();
 
   // --- 設定ダイアログ ---
   $("#btn-settings").addEventListener("click", async () => {

@@ -96,6 +96,28 @@ const PATHS = {
     <path d="M12.5 20.5v-1.8a4 4 0 0 0-4-4h-4a4 4 0 0 0-4 4v1.8"/>
     <circle cx="6.5" cy="7.5" r="4"/>
   `,
+  /* タブ4: あそぶ（さいころ）。点だけは塗りにしないと輪に見えてしまう */
+  play: `
+    <rect x="3.4" y="3.4" width="17.2" height="17.2" rx="3.6"/>
+    <circle cx="8.6" cy="8.6" r="1.15" fill="currentColor" stroke="none"/>
+    <circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none"/>
+    <circle cx="15.4" cy="15.4" r="1.15" fill="currentColor" stroke="none"/>
+  `,
+  /* おみくじ: きらめき */
+  sparkle: `
+    <path d="M12 2.8 14 8.6l5.8 2-5.8 2-2 5.8-2-5.8-5.8-2 5.8-2Z"/>
+    <path d="M18.8 16.4l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7Z"/>
+  `,
+  /* とばす: 二重の矢印 */
+  skip: `
+    <path d="m6.5 6 6 6-6 6"/>
+    <path d="m13.5 6 6 6-6 6"/>
+  `,
+  /* もう一度 */
+  again: `
+    <path d="M20.3 12a8.3 8.3 0 1 1-2.4-5.9"/>
+    <path d="M20.5 3.8v5h-5"/>
+  `,
   /* 空状態（何もない） */
   empty: `
     <path d="M20.5 12.5h-4l-1.5 3h-6l-1.5-3h-4"/>

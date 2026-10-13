@@ -5,11 +5,18 @@
  *   Edge Functions > Deploy a new function > Via Editor
  * に貼り付けて使う（PCへのインストールは不要）。
  *
- * 呼ばれ方は2通り:
+ * 呼ばれ方は3通り:
  *   1) Database Webhook（restrictions の INSERT / DELETE）
  *      → 変更した本人以外のメンバーへ通知する
+ *      ※ source="game"（あそぶタブの仕分け）は DB 側のトリガーで除外済み。
+ *        10件まとめて入るので、1件ずつ通知すると10連発になるため。
  *   2) アプリの「テスト通知を送る」ボタン（body が {"test":true}）
  *      → 押した本人へ1通送る。届かないときの切り分け用。
+ *   3) 仕分け1セットの終わり（body が {"match":true, "names":[...]}）
+ *      → 相手へ「3つ一致しました」を1通だけ送る。
+ *
+ * 2) と 3) は、どちらも「誰から呼ばれたか」をJWTで確かめる。
+ * 宛先はサーバ側で同じルームの相手を引くので、他人へ勝手には送れない。
  *
  * 必要なシークレット（Edge Functions > Secrets に登録）:
  *   VAPID_PUBLIC_KEY   … config.js に書いたものと同じ公開鍵
@@ -46,6 +53,30 @@ const KIND_LABEL: Record<string, string> = {
 
 type Sub = { id: string; endpoint: string; p256dh: string; auth: string };
 
+/*
+ * CORS。
+ * アプリは https://<ユーザー名>.github.io から、この関数は supabase.co から
+ * 配信されるので別ドメイン扱いになる。許可ヘッダーを返さないと、ブラウザは
+ * 本番のリクエストを送る前の確認（OPTIONS）で止まり、
+ * 画面には理由の分からない "Load failed" だけが出る。
+ *
+ * 誰でも呼べて困らないのは、この関数自身が
+ *   ・DBから  → 合言葉が一致しないと拒否
+ *   ・アプリから → ログイン情報を検証して本人確認
+ * を必ず行っているため。
+ */
+const CORS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-webhook-secret",
+  "Access-Control-Max-Age": "86400",
+};
+
+/** CORS ヘッダー付きで返す。すべての応答をこれに通すこと。 */
+const reply = (body: string, status = 200, extra: Record<string, string> = {}) =>
+  new Response(body, { status, headers: { ...CORS, ...extra } });
+
 /** 宛先1件へ送る。相手が通知を切っていたら宛先を掃除する。 */
 async function sendTo(sub: Sub, payload: unknown) {
   try {
@@ -72,26 +103,49 @@ async function displayName(userId: string) {
   return data?.display_name || "相手";
 }
 
+/** Authorization ヘッダーの JWT から、呼び出した本人を特定する */
+async function userIdFrom(req: Request): Promise<string | null> {
+  const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!jwt) return null;
+  const { data, error } = await admin.auth.getUser(jwt);
+  return error || !data?.user ? null : data.user.id;
+}
+
+/** その人が入っているルームの、本人以外のメンバー */
+async function partnersOf(userId: string) {
+  const { data: mine } = await admin
+    .from("room_members").select("room_id").eq("user_id", userId).limit(1).maybeSingle();
+  if (!mine?.room_id) return { roomId: null, targets: [] as string[] };
+
+  const { data: members } = await admin
+    .from("room_members").select("user_id").eq("room_id", mine.room_id);
+  return {
+    roomId: mine.room_id as string,
+    targets: (members ?? []).map((m) => m.user_id).filter((id) => id !== userId),
+  };
+}
+
+/** 「たこやき、ほか2つ」の形に縮める（アプリ画面の文面と揃える） */
+function summarize(names: string[]) {
+  return names.length > 1 ? `${names[0]}、ほか${names.length - 1}つ` : names[0];
+}
+
 Deno.serve(async (req) => {
-  if (req.method !== "POST") return new Response("POST only", { status: 405 });
+  // ブラウザが本番リクエスト前に投げてくる確認。ここで許可を返さないと先へ進めない
+  if (req.method === "OPTIONS") return reply("ok");
+  if (req.method !== "POST") return reply("POST only", 405);
 
   let body: Record<string, unknown> = {};
   try {
     body = await req.json();
   } catch {
-    return new Response("invalid json", { status: 400 });
+    return reply("invalid json", 400);
   }
 
   /* ---------------- テスト送信（アプリのボタンから） ---------------- */
   if (body.test === true) {
-    // 呼び出した本人を、渡された JWT から特定する
-    const authHeader = req.headers.get("Authorization") ?? "";
-    const jwt = authHeader.replace(/^Bearer\s+/i, "");
-    const { data: userData, error } = await admin.auth.getUser(jwt);
-    if (error || !userData?.user) {
-      return new Response("ログインが確認できませんでした", { status: 401 });
-    }
-    const uid = userData.user.id;
+    const uid = await userIdFrom(req);
+    if (!uid) return reply("ログインが確認できませんでした", 401);
 
     const { data: subs } = await admin
       .from("push_subscriptions")
@@ -99,7 +153,7 @@ Deno.serve(async (req) => {
       .eq("user_id", uid);
 
     if (!subs?.length) {
-      return new Response("この端末はまだ通知に登録されていません", { status: 404 });
+      return reply("この端末はまだ通知に登録されていません", 404);
     }
 
     const results = await Promise.all(subs.map((s) =>
@@ -112,27 +166,64 @@ Deno.serve(async (req) => {
     const sent = results.filter((r) => r.ok).length;
     const failed = results.filter((r) => !r.ok && !r.gone);
     if (sent === 0) {
-      return new Response(
-        `送信できませんでした: ${JSON.stringify(failed).slice(0, 300)}`,
-        { status: 502 },
-      );
+      return reply(`送信できませんでした: ${JSON.stringify(failed).slice(0, 300)}`, 502);
     }
-    return new Response(`${sent}件の端末へ送信しました`, { status: 200 });
+    return reply(`${sent}件の端末へ送信しました`, 200);
+  }
+
+  /* ------------- 仕分けの一致（1セットにつき1通だけ） ------------- */
+  if (body.match === true) {
+    const uid = await userIdFrom(req);
+    if (!uid) return reply("ログインが確認できませんでした", 401);
+
+    // 文字数と件数は、こちらで必ず切り詰める（長い本文で通知が壊れないように）
+    const names: string[] = Array.isArray(body.names)
+      ? (body.names as unknown[])
+          .filter((n): n is string => typeof n === "string" && n.trim() !== "")
+          .slice(0, 20)
+          .map((n) => n.slice(0, 40))
+      : [];
+    if (!names.length) return reply("no names", 200);
+
+    const { roomId, targets } = await partnersOf(uid);
+    if (!roomId) return reply("no room", 200);
+    if (!targets.length) return reply("no partner", 200);
+
+    const { data: subs } = await admin
+      .from("push_subscriptions")
+      .select("id, endpoint, p256dh, auth")
+      .in("user_id", targets);
+    if (!subs?.length) return reply("no subscriptions", 200);
+
+    const who = await displayName(uid);
+    const results = await Promise.all(subs.map((s) =>
+      sendTo(s as Sub, {
+        title: "ふたりごはん",
+        body: `${who}さんと${names.length}つ一致しました（${summarize(names)}）`,
+        // 同じタグなら新しい方で置き換わる。連投しても通知欄が埋まらない
+        tag: `futarigohan-match-${roomId}`,
+      })
+    ));
+    return reply(
+      JSON.stringify({ sent: results.filter((r) => r.ok).length, total: results.length }),
+      200,
+      { "Content-Type": "application/json" },
+    );
   }
 
   /* ---------------- Database Webhook からの呼び出し ---------------- */
   if (WEBHOOK_SECRET && req.headers.get("x-webhook-secret") !== WEBHOOK_SECRET) {
-    return new Response("forbidden", { status: 403 });
+    return reply("forbidden", 403);
   }
 
   const type = String(body.type ?? "");
   // 通知するのは「増えた・減った」ときだけ。レベルやメモの微調整では鳴らさない。
   if (type !== "INSERT" && type !== "DELETE") {
-    return new Response("skipped", { status: 200 });
+    return reply("skipped", 200);
   }
 
   const row = (body.record ?? body.old_record) as Record<string, string> | null;
-  if (!row?.room_id || !row?.user_id) return new Response("no row", { status: 200 });
+  if (!row?.room_id || !row?.user_id) return reply("no row", 200);
 
   const actorId = row.user_id;
   const roomId = row.room_id;
@@ -141,13 +232,13 @@ Deno.serve(async (req) => {
   const { data: members } = await admin
     .from("room_members").select("user_id").eq("room_id", roomId);
   const targets = (members ?? []).map((m) => m.user_id).filter((id) => id !== actorId);
-  if (!targets.length) return new Response("no partner", { status: 200 });
+  if (!targets.length) return reply("no partner", 200);
 
   const { data: subs } = await admin
     .from("push_subscriptions")
     .select("id, endpoint, p256dh, auth")
     .in("user_id", targets);
-  if (!subs?.length) return new Response("no subscriptions", { status: 200 });
+  if (!subs?.length) return reply("no subscriptions", 200);
 
   const who = await displayName(actorId);
   const food = row.food ?? "";
@@ -164,8 +255,9 @@ Deno.serve(async (req) => {
     })
   ));
 
-  return new Response(
+  return reply(
     JSON.stringify({ sent: results.filter((r) => r.ok).length, total: results.length }),
-    { status: 200, headers: { "Content-Type": "application/json" } },
+    200,
+    { "Content-Type": "application/json" },
   );
 });

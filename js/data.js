@@ -60,6 +60,28 @@ export const CATEGORIES = {
   dish: { label: "料理", icon: "dish" },
 };
 
+/**
+ * 登録の出どころ。
+ *   manual … 手で入力した（相手に通知する）
+ *   game   … 「あそぶ」の仕分けで入った（通知しない）
+ *
+ * 仕分けは一度に10件入るため、manual と同じ扱いにすると通知が10連発になる。
+ * DB 側のトリガーもこの列を見て、game のときは何も送らない。
+ */
+export const SOURCES = { manual: "手入力", game: "仕分け" };
+
+/**
+ * 重複判定用の正規化（全角半角・大文字小文字・空白のゆれを吸収）。
+ * 画面側（ui.js）と仕分け（game.js）の両方で、必ず同じ規則を使う必要があるため
+ * ここに1つだけ置く。
+ */
+export function normalizeFood(s) {
+  return String(s || "")
+    .normalize("NFKC")
+    .replace(/[\s　]/g, "")
+    .toLowerCase();
+}
+
 /* ------------------------------------------------------------------ *
  * エラーの日本語化
  * ------------------------------------------------------------------ */
@@ -275,7 +297,7 @@ export async function listRestrictions(roomId) {
  * Realtime のエコーが HTTP レスポンスより先に届いても、
  * 「id でマージする」だけで重複表示が起きない（冪等になる）。
  */
-export async function addRestriction({ id, roomId, userId, food, kind, level, category, note }) {
+export async function addRestriction({ id, roomId, userId, food, kind, level, category, note, source }) {
   const row = {
     id: id || newId(),
     room_id: roomId,
@@ -285,6 +307,7 @@ export async function addRestriction({ id, roomId, userId, food, kind, level, ca
     level: Number(level),
     category: category || "ingredient",
     note: String(note || "").trim().slice(0, 120),
+    source: source === "game" ? "game" : "manual",
   };
   return unwrap(await supabase.from("restrictions").insert(row).select().single());
 }
@@ -307,7 +330,7 @@ export async function deleteRestriction(id) {
 
 /** 「元に戻す」用。削除前の行をそのまま（id ごと）復活させる。 */
 export async function restoreRestriction(row) {
-  const { id, room_id, user_id, food, kind, level, category, note, created_at } = row;
+  const { id, room_id, user_id, food, kind, level, category, note, created_at, source } = row;
   return unwrap(
     await supabase
       .from("restrictions")
@@ -316,6 +339,9 @@ export async function restoreRestriction(row) {
         level: Number(level),
         category: category || "ingredient",
         note, created_at,
+        // 出どころを維持する。維持しないと、仕分けで入れたものを戻したときに
+        // 「手入力」に化けて、相手に不要な通知が飛ぶ。
+        source: source === "game" ? "game" : "manual",
       })
       .select()
       .single()

@@ -263,6 +263,101 @@
       <div id="summary-list"></div>
     </div>
 
+    <!-- ---- タブ4: あそぶ ---- -->
+    <div class="tabpanel" data-tab="play" hidden>
+
+      <!-- おみくじ。結果はルームIDと日付から計算するので保存していない -->
+      <section class="card card--tight omikuji">
+        <div class="omikuji__head">
+          <span data-icon="sparkle" data-icon-size="17"></span>
+          <h2>今日のおみくじ</h2>
+          <span class="note" id="omikuji-date"></span>
+        </div>
+        <button type="button" class="btn btn--primary btn--block" id="btn-omikuji">
+          おみくじを引く
+        </button>
+        <div class="omikuji__result" id="omikuji-result" hidden>
+          <div class="omikuji__fortune" id="omikuji-fortune"></div>
+          <p class="omikuji__msg" id="omikuji-msg"></p>
+          <p class="omikuji__food">
+            今日のラッキーごはん<b id="omikuji-food"></b>
+          </p>
+          <p class="note" id="omikuji-note"></p>
+        </div>
+      </section>
+
+      <!--
+        進み具合と相性度の帯。
+        仕分けカードの外に置いてあるのは、1セットが終わって結果画面に
+        切り替わっても、相性度が見えたままになるようにするため。
+      -->
+      <div class="sorter__bar">
+        <span class="sorter__progress" id="sort-progress"></span>
+        <span class="badge" id="compat" hidden></span>
+      </div>
+
+      <!-- すききらい仕分け -->
+      <section class="sorter" id="sorter">
+        <!--
+          touch-action: none はこのカードだけに掛ける（CSS側）。
+          縦方向が「強さ」の意味を持つため、ここでは指のスクロールを止める必要がある。
+          カードの外側は普通にスクロールできる。
+        -->
+        <div class="deck" id="deck">
+          <div class="fan" id="fan" aria-hidden="true">
+            <span class="fan__z fan__z--a3" data-zone="avoid-3">食べられない</span>
+            <span class="fan__z fan__z--a2" data-zone="avoid-2">極力避けたい</span>
+            <span class="fan__z fan__z--a1" data-zone="avoid-1">好まない</span>
+            <span class="fan__z fan__z--l3" data-zone="like-3">大好き</span>
+            <span class="fan__z fan__z--l2" data-zone="like-2">好き</span>
+            <span class="fan__z fan__z--l1" data-zone="like-1">まあ好き</span>
+          </div>
+          <div class="sortcard" id="sortcard">
+            <span class="sortcard__cat" id="sortcard-cat"></span>
+            <span class="sortcard__name" id="sortcard-name">―</span>
+            <span class="sortcard__verdict" id="sortcard-verdict"></span>
+          </div>
+        </div>
+
+        <p class="sorter__hint" id="sort-hint">
+          カードを指で引っぱると、左が「にがて」、右が「すき」。上へ向けるほど強くなります。
+        </p>
+
+        <div class="btnrow btnrow--center">
+          <button type="button" class="btn" id="btn-skip">
+            <span data-icon="skip" data-icon-size="18"></span>とばす
+          </button>
+        </div>
+
+        <!--
+          スワイプが使えない環境（キーボード操作・読み上げ）のための操作口。
+          見た目には出さないが、フォーカスは当たるので操作できる。
+        -->
+        <fieldset class="sr-only" id="sort-a11y">
+          <legend>キーボードで仕分ける</legend>
+          <button type="button" data-sort="avoid-3">食べられない</button>
+          <button type="button" data-sort="avoid-2">極力避けたい</button>
+          <button type="button" data-sort="avoid-1">好んでは食べない</button>
+          <button type="button" data-sort="like-1">まあ好き</button>
+          <button type="button" data-sort="like-2">好き</button>
+          <button type="button" data-sort="like-3">大好き</button>
+        </fieldset>
+      </section>
+
+      <!-- 1セット終わったとき／在庫が尽きたとき -->
+      <section class="card sortresult" id="sort-result" hidden>
+        <h2 id="sort-result-title">おつかれさまでした</h2>
+        <p class="muted" id="sort-result-body"></p>
+        <button type="button" class="btn btn--primary btn--block" id="btn-again">
+          <span data-icon="again" data-icon-size="18"></span>もう10問やる
+        </button>
+      </section>
+
+      <p class="note sorter__foot">
+        仕分けで入るのは「苦手」までです。アレルギーは、マイリストから自分で登録してください。
+      </p>
+    </div>
+
   </section>
 </main>
 
@@ -281,6 +376,9 @@
     </button>
     <button type="button" data-tabbtn="summary">
       <span class="tabbar__ic" data-icon="summary" data-icon-size="22"></span>まとめ
+    </button>
+    <button type="button" data-tabbtn="play">
+      <span class="tabbar__ic" data-icon="play" data-icon-size="22"></span>あそぶ
     </button>
   </nav>
 </div>

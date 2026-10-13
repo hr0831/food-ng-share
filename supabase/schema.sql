@@ -71,6 +71,11 @@ create table if not exists public.restrictions (
   -- ingredient = 食材（えび） / dish = 料理（エビチリ）
   category   text        not null default 'ingredient'
                          check (category in ('ingredient', 'dish')),
+  -- 出どころ。manual = 手入力 / game = 「あそぶ」タブの仕分け
+  -- 仕分けは一度に10件入るため、通知のトリガーはこの列を見て game を飛ばす。
+  -- 見ないと、相手の端末で通知が10連発になる。
+  source     text        not null default 'manual'
+                         check (source in ('manual', 'game')),
   note       text        not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -129,6 +134,13 @@ begin
   alter table public.restrictions drop constraint if exists restrictions_category_check;
   alter table public.restrictions
     add constraint restrictions_category_check check (category in ('ingredient', 'dish'));
+
+  -- 出どころ: 無ければ追加（既存行はすべて「手入力」扱いになる）
+  alter table public.restrictions
+    add column if not exists source text not null default 'manual';
+  alter table public.restrictions drop constraint if exists restrictions_source_check;
+  alter table public.restrictions
+    add constraint restrictions_source_check check (source in ('manual', 'game'));
 end;
 $$;
 

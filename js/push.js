@@ -176,11 +176,11 @@ export async function isEnabled() {
 }
 
 /**
- * テスト通知。
- * スマホでは開発者ツールが使えず「届かない」原因を切り分けにくいので、
- * 相手の操作を待たずに自分宛てへ1通送れるようにしている。
+ * Edge Function（notify-partner）を、ログイン中の本人として呼ぶ。
+ * 誰からの呼び出しかはサーバ側で JWT を見て判断するので、
+ * ここから「誰に送るか」を指定することはできない（他人へ勝手に送れない）。
  */
-export async function sendTestPush() {
+async function callNotify(body, label) {
   const { data } = await supabase.auth.getSession();
   const token = data?.session?.access_token;
   if (!token) return { ok: false, message: "ログインが切れています。もう一度ログインしてください。" };
@@ -193,14 +193,33 @@ export async function sendTestPush() {
         apikey: SUPABASE_PUBLISHABLE_KEY,
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ test: true }),
+      body: JSON.stringify(body),
     });
     const text = await res.text();
     if (!res.ok) {
-      return { ok: false, message: `テスト送信に失敗しました（HTTP ${res.status}）: ${text.slice(0, 200)}` };
+      return { ok: false, message: `${label}に失敗しました（HTTP ${res.status}）: ${text.slice(0, 200)}` };
     }
     return { ok: true, message: text.slice(0, 200) };
   } catch (e) {
-    return { ok: false, message: `テスト送信に失敗しました（${e?.message || "通信エラー"}）。` };
+    return { ok: false, message: `${label}に失敗しました（${e?.message || "通信エラー"}）。` };
   }
+}
+
+/**
+ * テスト通知。
+ * スマホでは開発者ツールが使えず「届かない」原因を切り分けにくいので、
+ * 相手の操作を待たずに自分宛てへ1通送れるようにしている。
+ */
+export function sendTestPush() {
+  return callNotify({ test: true }, "テスト送信");
+}
+
+/**
+ * 仕分けの一致を相手に知らせる（1セットにつき1通だけ）。
+ *
+ * 1件ごとに送ると10連発になるため、まとめてここから送る。
+ * 届かなくても遊びは続けられるので、呼び出し側は結果を無視してよい。
+ */
+export function sendMatchNotice(names) {
+  return callNotify({ match: true, names: names.slice(0, 20) }, "一致の通知");
 }
