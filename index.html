@@ -269,13 +269,16 @@
       <!-- おみくじ。結果はルームIDと日付から計算するので保存していない -->
       <section class="card card--tight omikuji" id="omikuji">
         <!--
-          抽選中の演出。期待度が段階的に上がっていく。
-          結果そのものは先に決まっていて、演出は「どこまで上がるか」を見せるだけ。
+          抽選中の演出。読み込みの輪が回り、最後に弾けて結果が出る。
+          期待度は「輪と光の色」だけで伝える（灰 → 桃 → 金 → 虹）。
+          文字で煽らないのは、地の書体で叫ぶとかえって安っぽく見えるため。
+          結果そのものは先に決まっていて、演出は何も変えない。
           タップで飛ばせる（毎日使うものなので、急いでいる日に邪魔をしない）。
         -->
         <div class="heat" id="omikuji-heat" hidden>
-          <div class="heat__rays"></div>
-          <div class="heat__caption" id="heat-caption"></div>
+          <div class="heat__glow"></div>
+          <div class="heat__ring"></div>
+          <div class="heat__flash"></div>
           <div class="heat__skip">タップで飛ばす</div>
         </div>
 

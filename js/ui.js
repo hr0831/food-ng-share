@@ -806,12 +806,14 @@ function gameExcluded() {
  * 良い運勢ほど上の段まで行くので、途中で今日の当たり外れが見当つく。
  */
 const HEAT_TIERS = [
-  { key: "t1", caption: "…", ms: 380 },
-  { key: "t2", caption: "お？", ms: 420 },
-  { key: "t3", caption: "チャンス！", ms: 460 },
-  { key: "t4", caption: "激アツ！！", ms: 520 },
-  { key: "t5", caption: "超激アツ！！！", ms: 560 },
+  { key: "t1", ms: 360 },   // 灰
+  { key: "t2", ms: 380 },   // 淡桃
+  { key: "t3", ms: 400 },   // 桃
+  { key: "t4", ms: 420 },   // 金
+  { key: "t5", ms: 440 },   // 虹
 ];
+/** 最後に弾ける時間。CSS の heat-flash / heat-burst と合わせる */
+const BANG_MS = 340;
 
 const prefersReducedMotion = () =>
   window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
@@ -826,32 +828,44 @@ function heatSequence(heat) {
   return seq;
 }
 
-/** 段を1つずつ上げていく。タップされたらその場で打ち切る。 */
+/**
+ * 読み込み中の輪を回しながら色を上げていき、最後に弾けさせる。
+ * タップされたらその場で打ち切って結果へ飛ぶ。
+ */
 async function runHeat(heat) {
   if (prefersReducedMotion()) return;
 
   const box = $("#omikuji-heat");
   const card = $("#omikuji");
   card.classList.add("omikuji--running");
+  box.classList.remove("heat--bang");
   box.hidden = false;
 
   let skip = null;
   const onTap = () => skip?.();
   box.addEventListener("click", onTap);
 
+  /** 指定時間だけ待つ。タップされたら true を返して早じまいする。 */
+  const hold = (ms) => new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), ms);
+    skip = () => { clearTimeout(timer); resolve(true); };
+  });
+
+  let tapped = false;
   for (const tier of heatSequence(heat)) {
     box.dataset.tier = tier.key;
-    $("#heat-caption").textContent = tier.caption;
-    const tapped = await new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(false), tier.ms);
-      skip = () => { clearTimeout(timer); resolve(true); };
-    });
-    if (tapped) break;
+    if (await hold(tier.ms)) { tapped = true; break; }
+  }
+  // 飛ばされたときに弾けさせても意味がないので、最後まで見た人にだけ出す
+  if (!tapped) {
+    box.classList.add("heat--bang");
+    await hold(BANG_MS);
   }
 
   box.removeEventListener("click", onTap);
   skip = null;
   box.hidden = true;
+  box.classList.remove("heat--bang");
   delete box.dataset.tier;
   card.classList.remove("omikuji--running");
 }

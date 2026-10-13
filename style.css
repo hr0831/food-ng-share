@@ -940,10 +940,10 @@ details.card[open] > summary { margin-bottom: 4px; }
 .omikuji__food b { font-size: 1.125rem; color: var(--text); }
 
 /* --- おみくじの抽選演出 ------------------------------------------- *
-   期待度を5段階で上げていく。段ごとに --heat（光の色）が変わり、
-   上の段ほど回転が速く、揺れが強くなる。
-   色だけでなく文字（チャンス／激アツ）でも伝えるので、
-   色の見え方が違う環境でも段がわかる。
+   読み込みの輪が回り、最後に弾けて結果が出る。
+   期待度は「輪と光の色」だけで伝える（灰 → 淡桃 → 桃 → 金 → 虹）。
+   文字で煽らないのは、地の書体で叫ぶとかえって安っぽく見えるため。
+   色はアイコンのラメと同じ系統に揃えてあるので、アプリの中で浮かない。
    ------------------------------------------------------------------ */
 
 .heat {
@@ -956,48 +956,61 @@ details.card[open] > summary { margin-bottom: 4px; }
   background: var(--surface);
   cursor: pointer;
   overflow: hidden;
-  --heat: #9AA5A2;
-  --heat-spin: 6s;
+  --heat: #B6AFA4;      /* 灰。まだ何も起きていない */
+  --heat-spin: .95s;
 }
-.heat[data-tier="t2"] { --heat: #3B82F6; --heat-spin: 3.4s; }
-.heat[data-tier="t3"] { --heat: #1FA971; --heat-spin: 2.2s; }
-.heat[data-tier="t4"] { --heat: #D92D20; --heat-spin: 1.2s; }
-.heat[data-tier="t5"] { --heat: #B04FD8; --heat-spin: .7s; }
+.heat[data-tier="t2"] { --heat: #E7A9C2; --heat-spin: .82s; }  /* 淡桃 */
+.heat[data-tier="t3"] { --heat: #D9608F; --heat-spin: .70s; }  /* 桃 */
+.heat[data-tier="t4"] { --heat: #E0A83C; --heat-spin: .58s; }  /* 金 */
+.heat[data-tier="t5"] { --heat: #C98BE0; --heat-spin: .46s; }  /* 虹（輪は下で上書き） */
 
-/* 放射状の光。中心から筋が伸びて回る */
-.heat__rays {
+/* 背後のほのかな光。段が上がるほど濃くなる */
+.heat__glow {
   position: absolute;
   left: 50%; top: 50%;
-  width: 260%; aspect-ratio: 1;
+  width: 230px; aspect-ratio: 1;
   transform: translate(-50%, -50%);
-  background: repeating-conic-gradient(
-    from 0deg, var(--heat) 0deg 6deg, transparent 6deg 20deg);
-  opacity: .22;
-  animation: heat-spin var(--heat-spin) linear infinite;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--heat) 0%, transparent 68%);
+  opacity: .10;
+  transition: opacity .35s ease;
 }
-/* 最上段だけ虹。ここまで来たら大吉 */
-.heat[data-tier="t5"] .heat__rays {
-  background: conic-gradient(from 0deg,
-    #E0453A, #E88B2E, #D9C227, #34A853, #2BB3C0, #3B6FE0, #9B4FD8, #E0453A);
-  opacity: .34;
-}
+.heat[data-tier="t3"] .heat__glow { opacity: .16; }
+.heat[data-tier="t4"] .heat__glow { opacity: .24; }
+.heat[data-tier="t5"] .heat__glow { opacity: .32; }
 
-.heat__caption {
+/* 読み込みの輪 */
+.heat__ring {
   position: relative;
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: .06em;
-  color: var(--heat);
-  text-align: center;
-  padding: 0 16px;
+  width: 54px; height: 54px;
+  border: 3px solid color-mix(in srgb, var(--heat) 20%, transparent);
+  border-top-color: var(--heat);
+  border-radius: 50%;
+  animation: heat-spin var(--heat-spin) linear infinite;
+  transition: border-color .3s ease;
 }
-.heat[data-tier="t4"] .heat__caption,
-.heat[data-tier="t5"] .heat__caption { font-size: 1.875rem; }
+/*
+ * 最上段だけ虹。
+ * 輪の線に円錐グラデは引けないので、円板を描いて真ん中をくり抜いている。
+ */
+.heat[data-tier="t5"] .heat__ring {
+  border-color: transparent;
+  background: conic-gradient(#E7A9C2, #E0A83C, #BBE3C8, #A6CCE8, #C98BE0, #E7A9C2);
+  -webkit-mask: radial-gradient(circle, transparent 21px, #000 22px);
+  mask: radial-gradient(circle, transparent 21px, #000 22px);
+}
 
-/* 上の段ほど強く震える */
-.heat[data-tier="t3"] { animation: heat-shake .22s linear infinite; }
-.heat[data-tier="t4"] { animation: heat-shake .14s linear infinite; }
-.heat[data-tier="t5"] { animation: heat-shake .09s linear infinite; }
+/* 弾ける瞬間 */
+.heat__flash {
+  position: absolute;
+  inset: 0;
+  background: #FFFFFF;
+  opacity: 0;
+  pointer-events: none;
+}
+.heat--bang .heat__flash { animation: heat-flash .34s ease-out forwards; }
+.heat--bang .heat__ring  { animation: heat-burst .34s cubic-bezier(.2, .9, .3, 1) forwards; }
+.heat--bang .heat__skip  { opacity: 0; }
 
 .heat__skip {
   position: absolute;
@@ -1005,22 +1018,28 @@ details.card[open] > summary { margin-bottom: 4px; }
   text-align: center;
   font-size: .6875rem;
   color: var(--text-muted);
+  transition: opacity .2s ease;
 }
 
-@keyframes heat-spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
-@keyframes heat-shake {
-  0%, 100% { transform: translate(0, 0); }
-  25%      { transform: translate(-2px, 1px); }
-  50%      { transform: translate(2px, -1px); }
-  75%      { transform: translate(-1px, -2px); }
+@keyframes heat-spin  { to { transform: rotate(360deg); } }
+@keyframes heat-flash { 0% { opacity: 0; } 18% { opacity: .9; } 100% { opacity: 0; } }
+@keyframes heat-burst {
+  0%   { transform: scale(1);   opacity: 1; }
+  100% { transform: scale(3.4); opacity: 0; }
 }
 
-/* 結果が出る瞬間。運勢の文字が弾んで出る */
-.omikuji__result--reveal .omikuji__fortune { animation: heat-pop .42s cubic-bezier(.2, 1.5, .4, 1); }
-@keyframes heat-pop {
-  0%   { transform: scale(.4); opacity: 0; }
-  60%  { transform: scale(1.12); opacity: 1; }
-  100% { transform: scale(1); }
+/*
+ * 結果が出る瞬間（ばんっ）。
+ * 大きい字が縮みながら、開いていた字間が締まる。
+ * 拡大だけだと間延びするので、字間を一緒に動かして「着地」を作っている。
+ */
+.omikuji__result--reveal .omikuji__fortune {
+  animation: heat-land .40s cubic-bezier(.12, 1.3, .3, 1);
+}
+@keyframes heat-land {
+  0%   { transform: scale(2.1); opacity: 0; letter-spacing: .5em; }
+  35%  { opacity: 1; }
+  100% { transform: scale(1);   opacity: 1; letter-spacing: .08em; }
 }
 
 /* --- 仕分け ------------------------------------------------------ */
@@ -1140,7 +1159,7 @@ details.card[open] > summary { margin-bottom: 4px; }
 @media (prefers-reduced-motion: reduce) {
   .fan, .fan__z, .sortcard__verdict { transition: none; }
   /* 動きを減らす設定の人には演出を見せない（ui.js 側でも飛ばしている） */
-  .heat__rays, .heat { animation: none; }
+  .heat__ring, .heat__flash { animation: none; }
   .omikuji__result--reveal .omikuji__fortune { animation: none; }
 }
 
