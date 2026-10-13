@@ -856,15 +856,22 @@ async function runHeat(heat) {
   card.classList.remove("omikuji--running");
 }
 
-/** 「おみくじを引く」を押したとき。演出 → 保存 → 結果表示 の順。 */
-async function playOmikuji() {
-  const btn = $("#btn-omikuji");
-  if (btn.disabled || !state.room) return;
+/**
+ * 演出を流してから結果を出す。
+ *
+ * 結果は日付とルームから決まっているので、何度呼んでも同じものが出る。
+ * つまり「引き直し」にはならない。だから演出だけは見直せるようにしてある
+ * （初めて引いた日に、もう一度見たくなることがあるため）。
+ */
+async function showOmikujiWithDrama(btn) {
+  if (!state.room || btn.disabled) return;
   btn.disabled = true;
 
   const dateKey = Game.jstDateKey();
-  // 演出の熱さを決めるために、先に結果を引いておく（表示はまだしない）
+  // 熱さを決めるために先に引いておく（この時点では表示しない）
   const { heat } = Game.drawOmikuji(state.room.id, dateKey, allItems());
+  $("#omikuji-result").hidden = true;
+
   await runHeat(heat);
 
   try { localStorage.setItem(OMIKUJI_KEY, dateKey); } catch { /* 無くても動く */ }
@@ -1129,7 +1136,8 @@ function wirePlay() {
   $("#btn-skip").addEventListener("click", skipCurrent);
   $("#btn-again").addEventListener("click", startSet);
 
-  $("#btn-omikuji").addEventListener("click", playOmikuji);
+  $("#btn-omikuji").addEventListener("click", (e) => showOmikujiWithDrama(e.currentTarget));
+  $("#btn-omikuji-replay").addEventListener("click", (e) => showOmikujiWithDrama(e.currentTarget));
 
   // スワイプが使えないとき用（キーボード・読み上げ）
   $$("[data-sort]").forEach((b) =>

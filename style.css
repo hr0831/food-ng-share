@@ -139,11 +139,36 @@ html, body {
   font-size: 16px;
   line-height: 1.6;
   -webkit-text-size-adjust: 100%;
+  /*
+   * ダブルタップでの拡大だけを止める。
+   * 仕分けのカード・おみくじ・タブなど「続けて2回叩く」場所が増え、
+   * そのたびに画面が拡大して使いにくくなっていたため。
+   *
+   * manipulation は「スクロールとつまんでの拡大は許す／ダブルタップ拡大は止める」。
+   * viewport に user-scalable=no を書く手もあるが、それだと文字を拡大して読むことも
+   * できなくなるので使わない。
+   *
+   * 子要素で touch-action を更に絞っている箇所（スワイプ削除の pan-y、
+   * 仕分けカードの none）はそのまま効く。
+   */
+  touch-action: manipulation;
 }
 
 /* --footer-h は ui.js が .footerbar の実測高さ（セーフエリア込み）で上書きする */
 body {
   padding-bottom: calc(var(--footer-h) + 16px);
+}
+
+/*
+ * 叩く場所には個別にも指定しておく。
+ * touch-action は継承されない性質の指定で、先祖だけに書いた場合の扱いは
+ * ブラウザの解釈に委ねることになる。実機で拡大されては困るので明示する。
+ *
+ * .item（スワイプ削除の行）と .sortcard（仕分けカード）は、別の指定を
+ * クラスで入れてある。クラスの方が強いので、ここで上書きされることはない。
+ */
+button, a, label, summary, input, select, textarea {
+  touch-action: manipulation;
 }
 
 h1, h2, h3 { margin: 0; font-weight: 700; }
@@ -600,7 +625,8 @@ summary:focus-visible {
   -webkit-user-select: none;
 }
 .row--dragging .item { transition: none; }
-.item--readonly { cursor: default; touch-action: auto; }
+/* 相手の行はスワイプしないので、横方向を押さえる必要がない */
+.item--readonly { cursor: default; touch-action: manipulation; }
 .item--pending { opacity: .55; }
 
 .item__ic { flex: 0 0 auto; margin-top: 2px; }
